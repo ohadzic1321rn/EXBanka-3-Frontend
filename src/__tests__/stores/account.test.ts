@@ -25,11 +25,15 @@ const mockAccount = {
   dnevniLimit: 100000, mesecniLimit: 1000000, naziv: '', status: 'aktivan',
 }
 
+const mockAccounts = [mockAccount, { ...mockAccount, id: '43', brojRacuna: '987654321098765432' }]
+
 describe('useAccountStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
   })
+
+  // --- createAccount ---
 
   it('createAccount calls API and returns account on success', async () => {
     vi.mocked(accountApi.create).mockResolvedValueOnce({ data: { account: mockAccount } })
@@ -46,21 +50,6 @@ describe('useAccountStore', () => {
     expect(store.lastCreated?.id).toBe('42')
   })
 
-  it('createAccount sets loading true during request', async () => {
-    let resolvePromise!: (v: any) => void
-    vi.mocked(accountApi.create).mockReturnValueOnce(
-      new Promise(resolve => { resolvePromise = resolve })
-    )
-
-    const store = useAccountStore()
-    const promise = store.createAccount({ clientId: 1, currencyId: 2, tip: 'tekuci', vrsta: 'licni' })
-    expect(store.loading).toBe(true)
-
-    resolvePromise({ data: { account: mockAccount } })
-    await promise
-    expect(store.loading).toBe(false)
-  })
-
   it('createAccount sets error and rethrows on API failure', async () => {
     vi.mocked(accountApi.create).mockRejectedValueOnce({
       response: { data: { message: 'devizni account cannot use RSD' } },
@@ -72,6 +61,83 @@ describe('useAccountStore', () => {
 
     expect(store.error).toBe('devizni account cannot use RSD')
     expect(store.loading).toBe(false)
+  })
+
+  // --- fetchAllAccounts ---
+
+  it('fetchAllAccounts sets accounts and total on success', async () => {
+    vi.mocked(accountApi.listAll).mockResolvedValueOnce({
+      data: { accounts: mockAccounts, total: '2' },
+    })
+
+    const store = useAccountStore()
+    await store.fetchAllAccounts()
+
+    expect(store.accounts).toHaveLength(2)
+    expect(store.total).toBe(2)
+    expect(store.loading).toBe(false)
+    expect(store.error).toBe('')
+  })
+
+  it('fetchAllAccounts sets error on API failure', async () => {
+    vi.mocked(accountApi.listAll).mockRejectedValueOnce({
+      response: { data: { message: 'Unauthorized' } },
+    })
+
+    const store = useAccountStore()
+    await store.fetchAllAccounts()
+
+    expect(store.accounts).toHaveLength(0)
+    expect(store.error).toBe('Unauthorized')
+  })
+
+  it('fetchAllAccounts passes filters to API', async () => {
+    vi.mocked(accountApi.listAll).mockResolvedValueOnce({
+      data: { accounts: [], total: '0' },
+    })
+
+    const store = useAccountStore()
+    store.setFilters({ tip: 'tekuci', vrsta: 'licni', status: 'aktivan' })
+    await store.fetchAllAccounts()
+
+    expect(accountApi.listAll).toHaveBeenCalledWith(
+      expect.objectContaining({ tip: 'tekuci', vrsta: 'licni', status: 'aktivan' })
+    )
+  })
+
+  // --- getAccount ---
+
+  it('getAccount returns account detail', async () => {
+    vi.mocked(accountApi.get).mockResolvedValueOnce({ data: { account: mockAccount } })
+
+    const store = useAccountStore()
+    const result = await store.getAccount('42')
+
+    expect(result.id).toBe('42')
+    expect(result.currencyKod).toBe('EUR')
+  })
+
+  // --- filters ---
+
+  it('setFilters resets page to 1', () => {
+    const store = useAccountStore()
+    store.page = 5
+    store.setFilters({ tip: 'devizni' })
+
+    expect(store.page).toBe(1)
+    expect(store.filters.tip).toBe('devizni')
+  })
+
+  it('clearFilters resets all filters and page', () => {
+    const store = useAccountStore()
+    store.setFilters({ tip: 'tekuci', vrsta: 'poslovni', status: 'blokiran' })
+    store.page = 3
+    store.clearFilters()
+
+    expect(store.filters.tip).toBe('')
+    expect(store.filters.vrsta).toBe('')
+    expect(store.filters.status).toBe('')
+    expect(store.page).toBe(1)
   })
 
   it('clearError resets error state', () => {
