@@ -7,7 +7,8 @@ const route = useRoute()
 const auth = useAuthStore()
 
 const publicRoutes = ['/login', '/activate', '/password-reset', '/reset-password']
-const isPublic = () => publicRoutes.some(p => route.path.startsWith(p))
+const isPublic = () =>
+  publicRoutes.some(p => route.path.startsWith(p)) || route.path.startsWith('/client')
 </script>
 
 <template>

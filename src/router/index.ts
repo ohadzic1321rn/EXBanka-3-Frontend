@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { useClientAuthStore } from '../stores/clientAuth'
+import { clientRoutes } from './clientRoutes'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -29,11 +31,21 @@ const router = createRouter({
       path: '/employees',
       component: () => import('../views/EmployeeListView.vue'),
     },
+    ...clientRoutes,
   ],
 })
 
 router.beforeEach((to) => {
   const auth = useAuthStore()
+  const clientAuth = useClientAuthStore()
+
+  // Client routes: redirect to client login if not authenticated as client
+  if (to.meta.clientOnly && !clientAuth.isLoggedIn) return '/client/login'
+  if (to.path === '/client/login' && clientAuth.isLoggedIn) return '/client/dashboard'
+
+  // Employee routes: skip for client-public routes
+  if (to.meta.clientPublic) return
+
   if (!to.meta.public && !auth.isLoggedIn) return '/login'
   if (to.path === '/login' && auth.isLoggedIn) return '/employees'
 })
