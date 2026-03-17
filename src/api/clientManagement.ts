@@ -32,6 +32,16 @@ export interface UpdateClientPayload {
   adresa: string
 }
 
+export interface CreateClientPayload {
+  ime: string
+  prezime: string
+  datumRodjenja: number
+  pol: string
+  email: string
+  brojTelefona: string
+  adresa: string
+}
+
 export const clientManagementApi = {
   list: (params: {
     emailFilter?: string
@@ -43,4 +53,6 @@ export const clientManagementApi = {
   get: (id: string) => api.get(`/clients/${id}`),
 
   update: (id: string, data: UpdateClientPayload) => api.put(`/clients/${id}`, data),
+
+  create: (data: CreateClientPayload) => api.post('/clients', data),
 }
