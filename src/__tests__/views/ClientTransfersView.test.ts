@@ -210,6 +210,30 @@ describe('ClientTransfersView', () => {
     expect(wrapper.text()).toContain('uspešno realizovan')
   })
 
+  it('verify step shows remaining attempts starting at 3', async () => {
+    vi.mocked(transferApi.create).mockResolvedValueOnce({
+      data: { transfer: { ...mockTransfers[0], status: 'u_obradi' } },
+    })
+
+    const wrapper = mount(ClientTransfersView)
+    await flushPromises()
+
+    const selects = wrapper.findAll('select')
+    await selects[0].setValue('1')
+    await selects[1].setValue('2')
+
+    const inputs = wrapper.findAll('input')
+    await inputs.find(i => i.attributes('type') === 'number')!.setValue('1000')
+    await inputs.find(i => i.attributes('placeholder') === 'Svrha transakcije')!.setValue('Test')
+    await wrapper.vm.$nextTick()
+
+    await wrapper.findAll('button').find(b => b.text() === 'Nastavi')!.trigger('click')
+    await wrapper.findAll('button').find(b => b.text().includes('Potvrdi'))!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Preostalo pokušaja: 3')
+  })
+
   it('verify step shows countdown timer starting at 5:00', async () => {
     vi.mocked(transferApi.create).mockResolvedValueOnce({
       data: { transfer: { ...mockTransfers[0], status: 'u_obradi' } },

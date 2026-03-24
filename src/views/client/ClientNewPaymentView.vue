@@ -37,6 +37,8 @@ const verifyError = ref('')
 const formError = ref('')
 const verifySecondsLeft = ref(300)
 const codeExpired = ref(false)
+const failedAttempts = ref(0)
+const maxAttempts = 3
 let verifyTimerInterval: ReturnType<typeof setInterval> | null = null
 
 const verifyCountdown = computed(() => {
@@ -48,6 +50,7 @@ const verifyCountdown = computed(() => {
 function startVerifyTimer() {
   verifySecondsLeft.value = 300
   codeExpired.value = false
+  failedAttempts.value = 0
   if (verifyTimerInterval) clearInterval(verifyTimerInterval)
   verifyTimerInterval = setInterval(() => {
     if (verifySecondsLeft.value > 0) {
@@ -143,6 +146,7 @@ async function handleVerify() {
     await paymentStore.verifyPayment(createdPayment.value!.id, verificationCode.value)
     step.value = 'success'
   } catch (e: any) {
+    failedAttempts.value++
     verifyError.value = e.response?.data?.message || 'Neispravan verifikacioni kod.'
   }
 }
@@ -176,6 +180,7 @@ function startNew() {
   if (verifyTimerInterval) { clearInterval(verifyTimerInterval); verifyTimerInterval = null }
   verifySecondsLeft.value = 300
   codeExpired.value = false
+  failedAttempts.value = 0
   step.value = 'form'
 }
 
@@ -328,6 +333,9 @@ onMounted(async () => {
           <span v-if="!codeExpired">Kod ističe za: <strong>{{ verifyCountdown }}</strong></span>
           <span v-else>Kod je istekao.</span>
         </div>
+        <div class="pay-attempts">
+          Preostalo pokušaja: <strong>{{ maxAttempts - failedAttempts }}</strong>
+        </div>
         <div class="pay-field">
           <input
             v-model="verificationCode"
@@ -468,6 +476,8 @@ onMounted(async () => {
 }
 .pay-countdown strong { color: #2563eb; font-size: 16px; }
 .pay-countdown-expired { background: #fef2f2; color: #dc2626; }
+.pay-attempts { text-align: center; font-size: 13px; color: #64748b; margin-bottom: 16px; }
+.pay-attempts strong { color: #0f172a; }
 
 /* Code input */
 .pay-code-input {

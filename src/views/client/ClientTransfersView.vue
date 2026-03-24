@@ -16,6 +16,8 @@ const verifyCode = ref('')
 const verifyError = ref('')
 const verifySecondsLeft = ref(300)
 const codeExpired = ref(false)
+const failedAttempts = ref(0)
+const maxAttempts = 3
 let verifyTimerInterval: ReturnType<typeof setInterval> | null = null
 
 const verifyCountdown = computed(() => {
@@ -108,6 +110,7 @@ async function handleVerify() {
     step.value = 'success'
     await transferStore.fetchByClient(clientId.value)
   } catch {
+    failedAttempts.value++
     verifyError.value = 'Pogrešan verifikacioni kod. Pokušajte ponovo.'
   }
 }
@@ -115,6 +118,7 @@ async function handleVerify() {
 function startVerifyTimer() {
   verifySecondsLeft.value = 300
   codeExpired.value = false
+  failedAttempts.value = 0
   if (verifyTimerInterval) clearInterval(verifyTimerInterval)
   verifyTimerInterval = setInterval(() => {
     if (verifySecondsLeft.value > 0) {
@@ -150,6 +154,7 @@ function startNew() {
   if (verifyTimerInterval) { clearInterval(verifyTimerInterval); verifyTimerInterval = null }
   verifySecondsLeft.value = 300
   codeExpired.value = false
+  failedAttempts.value = 0
   step.value = 'form'
 }
 
@@ -322,6 +327,9 @@ onMounted(async () => {
             <span v-if="!codeExpired">Kod ističe za: <strong>{{ verifyCountdown }}</strong></span>
             <span v-else>Kod je istekao.</span>
           </div>
+          <div class="tf-attempts">
+            Preostalo pokušaja: <strong>{{ maxAttempts - failedAttempts }}</strong>
+          </div>
           <div class="tf-field">
             <label>Verifikacioni kod</label>
             <input
@@ -450,6 +458,8 @@ onMounted(async () => {
 }
 .tf-countdown strong { color: #93c5fd; font-size: 15px; }
 .tf-countdown-expired { background: rgba(239,68,68,0.2); color: #fca5a5; }
+.tf-attempts { font-size: 13px; color: rgba(255,255,255,0.6); margin-bottom: 16px; }
+.tf-attempts strong { color: rgba(255,255,255,0.9); }
 
 /* Success */
 .tf-success { text-align: center; padding: 32px 0; }

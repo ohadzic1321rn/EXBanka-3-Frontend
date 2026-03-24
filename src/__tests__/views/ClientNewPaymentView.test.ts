@@ -229,6 +229,30 @@ describe('ClientNewPaymentView', () => {
     expect(wrapper.text()).toContain('Neispravan kod')
   })
 
+  it('verify step shows remaining attempts starting at 3', async () => {
+    const wrapper = mount(ClientNewPaymentView)
+    await flushPromises()
+    await goToVerifyStep(wrapper)
+
+    expect(wrapper.text()).toContain('Preostalo pokušaja: 3')
+  })
+
+  it('shows fewer remaining attempts after a wrong code', async () => {
+    vi.mocked(paymentApi.verify).mockRejectedValueOnce({
+      response: { data: { message: 'invalid verification code' } },
+    })
+
+    const wrapper = mount(ClientNewPaymentView)
+    await flushPromises()
+    await goToVerifyStep(wrapper)
+
+    await wrapper.find('input[maxlength="6"]').setValue('000000')
+    await wrapper.findAll('button').find(b => b.text() === 'Potvrdi kod')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Preostalo pokušaja: 2')
+  })
+
   it('success step has Novo plaćanje button that resets form', async () => {
     vi.mocked(paymentApi.verify).mockResolvedValueOnce({
       data: { payment: { ...mockPayment, status: 'uspesno' } },
