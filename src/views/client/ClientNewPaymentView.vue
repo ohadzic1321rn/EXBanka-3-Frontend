@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { validateAccountNumber } from '../../utils/accountValidation'
 import { useRouter } from 'vue-router'
 import { useClientAuthStore } from '../../stores/clientAuth'
 import { useClientAccountStore } from '../../stores/clientAccount'
@@ -111,6 +112,7 @@ function goToConfirm() {
   formError.value = ''
   if (!form.value.fromAccountId) { formError.value = 'Izaberite račun platioca.'; return }
   if (!receiverBrojRacuna.value) { formError.value = 'Unesite broj računa primaoca.'; return }
+  if (!validateAccountNumber(receiverBrojRacuna.value)) { formError.value = 'Broj računa primaoca je neispravan (checksum greška).'; return }
   if (!form.value.iznos || Number(form.value.iznos) <= 0) { formError.value = 'Unesite validan iznos.'; return }
   if (!form.value.svrha.trim()) { formError.value = 'Unesite svrhu plaćanja.'; return }
   step.value = 'confirm'

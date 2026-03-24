@@ -46,13 +46,13 @@ const mockAccounts = [
 ]
 
 const mockRecipients = [
-  { id: '10', clientId: '5', naziv: 'EPS', brojRacuna: '999999999999999999' },
+  { id: '10', clientId: '5', naziv: 'EPS', brojRacuna: '160000000000000002' },
 ]
 
 const mockPayment = {
   id: 'p1',
   racunPosiljaocaId: '1',
-  racunPrimaocaBroj: '999999999999999999',
+  racunPrimaocaBroj: '160000000000000002',
   iznos: 5000,
   sifraPlacanja: '289',
   pozivNaBroj: '',
@@ -158,7 +158,7 @@ describe('ClientNewPaymentView', () => {
     await wrapper.findAll('button').find(b => b.text() === 'Nastavi')!.trigger('click')
 
     expect(wrapper.text()).toContain('Pregled naloga')
-    expect(wrapper.text()).toContain('999999999999999999')
+    expect(wrapper.text()).toContain('160000000000000002')
     expect(wrapper.text()).toContain('Struja')
   })
 
@@ -251,6 +251,45 @@ describe('ClientNewPaymentView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Preostalo pokušaja: 2')
+  })
+
+  // S2-BONUS-12: Account number checksum validation
+  it('shows error when manual recipient account number fails mod 11 checksum', async () => {
+    const wrapper = mount(ClientNewPaymentView)
+    await flushPromises()
+
+    const selects = wrapper.findAll('select')
+    await selects[2].setValue('1') // fromAccountId
+
+    // Switch to manual recipient mode
+    await wrapper.findAll('button').find(b => b.text() === 'Ručni unos')!.trigger('click')
+    await wrapper.find('input[placeholder="Broj računa primaoca (18 cifara)"]').setValue('160000000000000099') // invalid checksum
+    await wrapper.find('input[type="number"]').setValue('1000')
+    await wrapper.find('input[placeholder="Svrha plaćanja"]').setValue('Test')
+
+    await wrapper.findAll('button').find(b => b.text() === 'Nastavi')!.trigger('click')
+
+    expect(wrapper.text()).toContain('neispravan')
+  })
+
+  it('allows proceeding when manual recipient account number has valid mod 11 checksum', async () => {
+    vi.mocked(paymentApi.create).mockResolvedValueOnce({ data: { payment: mockPayment } })
+
+    const wrapper = mount(ClientNewPaymentView)
+    await flushPromises()
+
+    const selects = wrapper.findAll('select')
+    await selects[2].setValue('1')
+
+    await wrapper.findAll('button').find(b => b.text() === 'Ručni unos')!.trigger('click')
+    await wrapper.find('input[placeholder="Broj računa primaoca (18 cifara)"]').setValue('160000000000000002') // valid
+    await wrapper.find('input[type="number"]').setValue('1000')
+    await wrapper.find('input[placeholder="Svrha plaćanja"]').setValue('Test')
+
+    await wrapper.findAll('button').find(b => b.text() === 'Nastavi')!.trigger('click')
+
+    expect(wrapper.text()).not.toContain('neispravan')
+    expect(wrapper.text()).toContain('Pregled naloga')
   })
 
   it('success step has Novo plaćanje button that resets form', async () => {
