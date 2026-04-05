@@ -69,6 +69,11 @@ const router = createRouter({
           meta: { employeeSupervisorOnly: true },
         },
         {
+          path: 'orders',
+          component: () => import('../views/EmployeeOrderReviewView.vue'),
+          meta: { employeeSupervisorOnly: true },
+        },
+        {
           path: 'loans/requests',
           component: () => import('../views/LoanRequestsView.vue'),
         },
