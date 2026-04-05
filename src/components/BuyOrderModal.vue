@@ -5,7 +5,6 @@ import type { CreateOrderPayload, OrderType } from '../api/order'
 import { clientAccountApi } from '../api/clientAccount'
 import { accountApi } from '../api/account'
 import { useClientAuthStore } from '../stores/clientAuth'
-import { useAuthStore } from '../stores/auth'
 import type { ListingItem } from '../api/market'
 
 // ---------------------------------------------------------------------------
@@ -40,7 +39,6 @@ interface AccountOption {
 }
 
 const clientAuth = useClientAuthStore()
-const employeeAuth = useAuthStore()
 
 const accounts = ref<AccountOption[]>([])
 const accountsLoading = ref(false)
@@ -124,7 +122,7 @@ async function loadAccounts() {
     if (props.preselectedAccountId) {
       selectedAccountId.value = props.preselectedAccountId
     } else if (accounts.value.length > 0) {
-      selectedAccountId.value = accounts.value[0].id
+      selectedAccountId.value = accounts.value[0]!.id
     }
   } catch {
     // Non-fatal — user can still enter account manually if needed
