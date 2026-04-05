@@ -5,6 +5,7 @@ import { useMarketStore } from '../../stores/market'
 import { marketApi } from '../../api/market'
 import type { OptionItem } from '../../api/market'
 import PriceChart from '../../components/PriceChart.vue'
+import BuyOrderModal from '../../components/BuyOrderModal.vue'
 
 type Period = '1D' | '1W' | '1M' | '3M' | '1Y' | 'Max'
 const PERIODS: Period[] = ['1D', '1W', '1M', '3M', '1Y', 'Max']
@@ -136,6 +137,12 @@ watch(ticker, async () => {
   selectedExpiry.value = ''
   await loadOptions()
 })
+
+const showBuyModal = ref(false)
+
+function onOrderSubmitted() {
+  showBuyModal.value = false
+}
 </script>
 
 <template>
@@ -165,11 +172,22 @@ watch(ticker, async () => {
           <h1>{{ marketStore.currentListing.name }}</h1>
           <p>{{ marketStore.currentListing.exchange.name }} | {{ marketStore.currentListing.exchange.currency }}</p>
         </div>
-        <div class="hero-price">
-          {{ formatPrice(marketStore.currentListing.price) }}
-          <span>{{ marketStore.currentListing.exchange.currency }}</span>
+        <div class="hero-right">
+          <div class="hero-price">
+            {{ formatPrice(marketStore.currentListing.price) }}
+            <span>{{ marketStore.currentListing.exchange.currency }}</span>
+          </div>
+          <button class="buy-btn" @click="showBuyModal = true">Kupi</button>
         </div>
       </div>
+
+      <BuyOrderModal
+        v-if="showBuyModal"
+        :listing="marketStore.currentListing"
+        user-type="client"
+        @close="showBuyModal = false"
+        @submitted="onOrderSubmitted"
+      />
 
       <div class="stats-grid">
         <div class="stat-card">
@@ -413,10 +431,18 @@ watch(ticker, async () => {
   color: #64748b;
 }
 
+.hero-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+}
+
 .hero-price {
   font-size: 42px;
   font-weight: 800;
   color: #0f172a;
+  text-align: right;
 }
 
 .hero-price span {
@@ -425,6 +451,19 @@ watch(ticker, async () => {
   font-weight: 600;
   color: #64748b;
 }
+
+.buy-btn {
+  padding: 12px 28px;
+  background: #16a34a;
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.buy-btn:hover { background: #15803d; }
 
 .stats-grid,
 .summary-grid {
