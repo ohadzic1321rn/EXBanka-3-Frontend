@@ -2,13 +2,46 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useClientPortfolioStore } from '../../stores/portfolio'
-import type { Holding } from '../../api/portfolio'
+import { useClientAuthStore } from '../../stores/clientAuth'
+import { clientPortfolioApi, type Holding } from '../../api/portfolio'
+import { clientTaxApi, type TaxSummary } from '../../api/tax'
 import BuyOrderModal from '../../components/BuyOrderModal.vue'
 import type { ListingItem } from '../../api/market'
 
 const portfolioStore = useClientPortfolioStore()
+const authStore = useClientAuthStore()
 
 const sellModalHolding = ref<Holding | null>(null)
+
+// OTC toggle
+const togglingPublic = ref<Set<number>>(new Set())
+
+async function togglePublic(h: Holding) {
+  togglingPublic.value.add(h.id)
+  try {
+    await clientPortfolioApi.setPublic(h.id, !h.isPublic)
+    await portfolioStore.fetchAll()
+  } finally {
+    togglingPublic.value.delete(h.id)
+  }
+}
+
+// Tax section
+const taxSummary = ref<TaxSummary | null>(null)
+const taxError = ref('')
+
+const currentPeriod = new Date().toISOString().slice(0, 7) // YYYY-MM
+
+async function fetchTaxSummary() {
+  const userId = Number(authStore.client?.id)
+  if (!userId) return
+  try {
+    const res = await clientTaxApi.getSummary(userId, currentPeriod)
+    taxSummary.value = res.data
+  } catch {
+    taxError.value = 'Nije moguće učitati porezne podatke.'
+  }
+}
 
 const sortedHoldings = computed(() =>
   [...portfolioStore.holdings].sort((a, b) => b.marketValue - a.marketValue || a.assetTicker.localeCompare(b.assetTicker))
@@ -23,10 +56,6 @@ const concentrationRatio = computed(() => {
 const formatter = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 function formatAmount(value: number) { return formatter.format(value) }
 
-function positionShare(marketValue: number) {
-  if (!portfolioStore.totalValue) return 0
-  return (marketValue / portfolioStore.totalValue) * 100
-}
 
 function holdingToListing(h: Holding): ListingItem {
   return {
@@ -49,7 +78,10 @@ function onSellSubmitted() {
   portfolioStore.fetchAll()
 }
 
-onMounted(() => portfolioStore.fetchAll())
+onMounted(() => {
+  portfolioStore.fetchAll()
+  fetchTaxSummary()
+})
 </script>
 
 <template>
@@ -134,12 +166,41 @@ onMounted(() => portfolioStore.fetchAll())
                   </div>
                   <div class="asset-meta">{{ item.unrealizedPnLPct.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}%</div>
                 </td>
-                <td>
+                <td class="action-cell">
+                  <button
+                    v-if="item.assetType === 'stock'"
+                    class="otc-btn"
+                    :class="{ 'otc-active': item.isPublic }"
+                    :disabled="togglingPublic.has(item.id)"
+                    @click="togglePublic(item)"
+                    :title="item.isPublic ? 'OTC: javno — klikni da ukloniš' : 'OTC: privatno — klikni da objaviš'"
+                  >{{ item.isPublic ? 'OTC ✓' : 'OTC' }}</button>
                   <button class="sell-btn" @click="openSell(item)">Prodaj</button>
                 </td>
               </tr>
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <!-- Tax section -->
+      <section class="panel tax-panel">
+        <div class="panel-head">
+          <h2>Porez na kapitalnu dobit</h2>
+        </div>
+        <div v-if="taxError" class="error-box" style="margin:0">{{ taxError }}</div>
+        <div v-else-if="!taxSummary" class="empty-inline">Učitavam porezne podatke...</div>
+        <div v-else class="tax-grid">
+          <div class="tax-card">
+            <span>Neplaćeni porez ({{ currentPeriod }})</span>
+            <strong :class="{ negative: taxSummary.total_unpaid > 0 }">
+              {{ formatAmount(taxSummary.total_unpaid) }} RSD
+            </strong>
+          </div>
+          <div class="tax-card">
+            <span>Plaćeno ove godine</span>
+            <strong>{{ formatAmount(taxSummary.paid_this_year) }} RSD</strong>
+          </div>
         </div>
       </section>
 
@@ -376,4 +437,61 @@ onMounted(() => portfolioStore.fetchAll())
     grid-template-columns: 1fr;
   }
 }
+
+.tax-panel {
+  margin-top: 24px;
+}
+
+.tax-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.tax-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+
+.tax-card span {
+  display: block;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+
+.tax-card strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 20px;
+  color: #0f172a;
+}
+
+.otc-btn {
+  padding: 4px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-right: 6px;
+}
+
+.otc-btn.otc-active {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #15803d;
+}
+
+.otc-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.action-cell { white-space: nowrap; }
 </style>

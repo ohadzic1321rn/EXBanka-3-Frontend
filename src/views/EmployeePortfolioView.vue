@@ -2,16 +2,48 @@
 import { onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useEmployeePortfolioStore } from '../stores/portfolio'
-import { employeePortfolioApi } from '../api/portfolio'
-import type { Holding } from '../api/portfolio'
+import { useAuthStore } from '../stores/auth'
+import { employeePortfolioApi, type Holding } from '../api/portfolio'
+import { employeeTaxApi, type TaxSummary } from '../api/tax'
 import BuyOrderModal from '../components/BuyOrderModal.vue'
 import type { ListingItem } from '../api/market'
 
 const portfolioStore = useEmployeePortfolioStore()
+const authStore = useAuthStore()
 
 const exercising = ref<number | null>(null)
 const exerciseError = ref('')
 const sellModalHolding = ref<Holding | null>(null)
+
+// OTC toggle
+const togglingPublic = ref<Set<number>>(new Set())
+
+async function togglePublic(h: Holding) {
+  togglingPublic.value.add(h.id)
+  try {
+    await employeePortfolioApi.setPublic(h.id, !h.isPublic)
+    await portfolioStore.fetchAll()
+  } finally {
+    togglingPublic.value.delete(h.id)
+  }
+}
+
+// Tax section
+const taxSummary = ref<TaxSummary | null>(null)
+const taxError = ref('')
+
+const currentPeriod = new Date().toISOString().slice(0, 7) // YYYY-MM
+
+async function fetchTaxSummary() {
+  const userId = Number(authStore.employee?.id)
+  if (!userId) return
+  try {
+    const res = await employeeTaxApi.getSummary(userId, 'employee', currentPeriod)
+    taxSummary.value = res.data
+  } catch {
+    taxError.value = 'Nije moguće učitati porezne podatke.'
+  }
+}
 
 const formatter = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 function fmt(v: number) { return formatter.format(v) }
@@ -50,7 +82,10 @@ async function exerciseOption(holdingId: number) {
   }
 }
 
-onMounted(() => portfolioStore.fetchAll())
+onMounted(() => {
+  portfolioStore.fetchAll()
+  fetchTaxSummary()
+})
 </script>
 
 <template>
@@ -134,6 +169,14 @@ onMounted(() => portfolioStore.fetchAll())
                   <div class="asset-meta">{{ item.unrealizedPnLPct.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}%</div>
                 </td>
                 <td class="action-cell">
+                  <button
+                    v-if="item.assetType === 'stock'"
+                    class="otc-btn"
+                    :class="{ 'otc-active': item.isPublic }"
+                    :disabled="togglingPublic.has(item.id)"
+                    @click="togglePublic(item)"
+                    :title="item.isPublic ? 'OTC: javno — klikni da ukloniš' : 'OTC: privatno — klikni da objaviš'"
+                  >{{ item.isPublic ? 'OTC ✓' : 'OTC' }}</button>
                   <!-- Options: show exercise button; Prodaj is secondary -->
                   <template v-if="item.assetType === 'option'">
                     <button
@@ -150,6 +193,27 @@ onMounted(() => portfolioStore.fetchAll())
               </tr>
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <!-- Tax section -->
+      <section class="panel tax-panel">
+        <div class="panel-head">
+          <h2>Porez na kapitalnu dobit</h2>
+        </div>
+        <div v-if="taxError" class="error-box" style="margin:0">{{ taxError }}</div>
+        <div v-else-if="!taxSummary" class="empty-state" style="padding:16px">Učitavam porezne podatke...</div>
+        <div v-else class="tax-grid">
+          <div class="tax-card">
+            <span>Neplaćeni porez ({{ currentPeriod }})</span>
+            <strong :class="{ negative: taxSummary.total_unpaid > 0 }">
+              {{ fmt(taxSummary.total_unpaid) }} RSD
+            </strong>
+          </div>
+          <div class="tax-card">
+            <span>Plaćeno ove godine</span>
+            <strong>{{ fmt(taxSummary.paid_this_year) }} RSD</strong>
+          </div>
         </div>
       </section>
 
@@ -352,6 +416,61 @@ onMounted(() => portfolioStore.fetchAll())
 }
 .exercise-btn:hover:not(:disabled) { background: #6d28d9; }
 .exercise-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.otc-btn {
+  padding: 4px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-right: 6px;
+}
+
+.otc-btn.otc-active {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #15803d;
+}
+
+.otc-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tax-panel {
+  margin-top: 24px;
+}
+
+.tax-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.tax-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+
+.tax-card span {
+  display: block;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+
+.tax-card strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 20px;
+  color: #0f172a;
+}
 
 .empty-state,
 .error-box {
