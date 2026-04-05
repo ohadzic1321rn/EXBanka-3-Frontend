@@ -12,10 +12,17 @@ import type { ListingItem } from '../api/market'
 // Props / emits
 // ---------------------------------------------------------------------------
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   listing: ListingItem
   userType: 'client' | 'employee'
-}>()
+  direction?: 'buy' | 'sell'
+  maxQuantity?: number
+  preselectedAccountId?: number
+}>(), {
+  direction: 'buy',
+  maxQuantity: undefined,
+  preselectedAccountId: undefined,
+})
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -62,11 +69,10 @@ const needsLimit = computed(() => orderType.value === 'limit' || orderType.value
 const needsStop = computed(() => orderType.value === 'stop' || orderType.value === 'stop_limit')
 
 const displayPrice = computed(() => {
-  // For buy orders: use ask for market/stop, limitValue for limit/stop_limit
   if (orderType.value === 'limit' || orderType.value === 'stop_limit') {
-    return limitValue.value ?? props.listing.ask
+    return limitValue.value ?? (props.direction === 'sell' ? props.listing.bid : props.listing.ask)
   }
-  return props.listing.ask
+  return props.direction === 'sell' ? props.listing.bid : props.listing.ask
 })
 
 const approxTotal = computed(() =>
@@ -115,7 +121,9 @@ async function loadAccounts() {
           balance: Number(a.raspolozivoStanje),
         }))
     }
-    if (accounts.value.length > 0) {
+    if (props.preselectedAccountId) {
+      selectedAccountId.value = props.preselectedAccountId
+    } else if (accounts.value.length > 0) {
       selectedAccountId.value = accounts.value[0].id
     }
   } catch {
@@ -133,6 +141,10 @@ function goToConfirm() {
   errorMsg.value = ''
   if (quantity.value < 1) {
     errorMsg.value = 'Količina mora biti najmanje 1.'
+    return
+  }
+  if (props.maxQuantity !== undefined && quantity.value > props.maxQuantity) {
+    errorMsg.value = `Maksimalna količina je ${props.maxQuantity}.`
     return
   }
   if ((needsLimit.value) && (!limitValue.value || limitValue.value <= 0)) {
@@ -162,7 +174,7 @@ async function submitOrder() {
     const payload: CreateOrderPayload = {
       assetTicker: props.listing.ticker,
       orderType: orderType.value,
-      direction: 'buy',
+      direction: props.direction,
       quantity: quantity.value,
       contractSize: contractSize.value,
       limitValue: needsLimit.value ? limitValue.value : null,
@@ -197,7 +209,7 @@ onMounted(loadAccounts)
       <div class="modal-header">
         <div>
           <span class="ticker-pill">{{ listing.ticker }}</span>
-          <h2>Kupi — {{ listing.name }}</h2>
+          <h2>{{ direction === 'sell' ? 'Prodaj' : 'Kupi' }} — {{ listing.name }}</h2>
         </div>
         <button class="close-btn" @click="emit('close')" aria-label="Zatvori">✕</button>
       </div>
@@ -235,8 +247,8 @@ onMounted(loadAccounts)
 
           <!-- Quantity -->
           <div class="field">
-            <label>Količina</label>
-            <input type="number" v-model.number="quantity" min="1" step="1" />
+            <label>Količina{{ maxQuantity !== undefined ? ` (max ${maxQuantity})` : '' }}</label>
+            <input type="number" v-model.number="quantity" min="1" :max="maxQuantity ?? undefined" step="1" />
           </div>
 
           <!-- Contract size (advanced) -->
@@ -314,7 +326,7 @@ onMounted(loadAccounts)
           <h3>Potvrda naloga</h3>
           <ul class="summary-list">
             <li><span>Hartija</span><strong>{{ listing.ticker }} — {{ listing.name }}</strong></li>
-            <li><span>Smer</span><strong class="buy-label">BUY</strong></li>
+            <li><span>Smer</span><strong :class="direction === 'sell' ? 'sell-label' : 'buy-label'">{{ direction === 'sell' ? 'SELL' : 'BUY' }}</strong></li>
             <li><span>Tip naloga</span><strong>{{ orderType.toUpperCase().replace('_', '-') }}</strong></li>
             <li><span>Količina</span><strong>{{ quantity }}</strong></li>
             <li><span>Veličina ugovora</span><strong>{{ contractSize }}</strong></li>
@@ -330,8 +342,12 @@ onMounted(loadAccounts)
 
         <div class="modal-actions">
           <button class="btn-secondary" :disabled="submitting" @click="backToForm">Nazad</button>
-          <button class="btn-buy" :disabled="submitting" @click="submitOrder">
-            {{ submitting ? 'Slanje...' : 'Potvrdi kupovinu' }}
+          <button
+            :class="direction === 'sell' ? 'btn-sell' : 'btn-buy'"
+            :disabled="submitting"
+            @click="submitOrder"
+          >
+            {{ submitting ? 'Slanje...' : direction === 'sell' ? 'Potvrdi prodaju' : 'Potvrdi kupovinu' }}
           </button>
         </div>
       </template>
@@ -581,6 +597,20 @@ onMounted(loadAccounts)
 .summary-list span { color: #64748b; }
 .summary-list strong { color: #0f172a; }
 .buy-label { color: #16a34a; }
+.sell-label { color: #dc2626; }
 .total-row { background: #f0fdf4; }
 .total-row strong { font-size: 16px; color: #15803d; }
+
+.btn-sell {
+  padding: 10px 28px;
+  border: none;
+  border-radius: 10px;
+  background: #dc2626;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 14px;
+}
+.btn-sell:hover:not(:disabled) { background: #b91c1c; }
+.btn-sell:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>

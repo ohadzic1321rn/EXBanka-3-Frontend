@@ -1,42 +1,83 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useMarketStore } from '../../stores/market'
+import { clientPortfolioApi } from '../../api/portfolio'
+import type { Holding } from '../../api/portfolio'
+import BuyOrderModal from '../../components/BuyOrderModal.vue'
+import type { ListingItem } from '../../api/market'
 
 const marketStore = useMarketStore()
 
-const holdingsCount = computed(() => marketStore.portfolio?.items.length ?? 0)
+// Rich holdings from the new endpoint (for sell buttons)
+const holdings = ref<Holding[]>([])
+const holdingsLoading = ref(false)
 
-const sortedItems = computed(() => {
-  if (!marketStore.portfolio) return []
-  return [...marketStore.portfolio.items].sort((left, right) => {
-    return right.marketValue - left.marketValue || left.ticker.localeCompare(right.ticker)
-  })
-})
+// Sell modal state
+const sellModalHolding = ref<Holding | null>(null)
+
+const holdingsCount = computed(() => holdings.value.length || marketStore.portfolio?.items.length || 0)
+
+const sortedHoldings = computed(() =>
+  [...holdings.value].sort((a, b) => b.marketValue - a.marketValue || a.assetTicker.localeCompare(b.assetTicker))
+)
+
+const totalValue = computed(() => holdings.value.reduce((s, h) => s + h.marketValue, 0))
+const totalUnrealizedPnL = computed(() => holdings.value.reduce((s, h) => s + h.unrealizedPnL, 0))
+const totalRealizedProfit = computed(() => holdings.value.reduce((s, h) => s + h.realizedProfit, 0))
 
 const concentrationRatio = computed(() => {
-  const total = marketStore.portfolio?.estimatedValue ?? 0
-  const topItem = sortedItems.value[0]
-  if (!total || !topItem) return 0
-  return (topItem.marketValue / total) * 100
+  const top = sortedHoldings.value[0]
+  if (!totalValue.value || !top) return 0
+  return (top.marketValue / totalValue.value) * 100
 })
 
-const formatter = new Intl.NumberFormat('en-US', {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-})
-
-function formatAmount(value: number) {
-  return formatter.format(value)
-}
+const formatter = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+function formatAmount(value: number) { return formatter.format(value) }
 
 function positionShare(marketValue: number) {
-  const total = marketStore.portfolio?.estimatedValue ?? 0
-  if (!total) return 0
-  return (marketValue / total) * 100
+  if (!totalValue.value) return 0
+  return (marketValue / totalValue.value) * 100
+}
+
+// Build a minimal ListingItem from holding data to pass to BuyOrderModal
+function holdingToListing(h: Holding): ListingItem {
+  return {
+    ticker: h.assetTicker,
+    name: h.assetName,
+    exchange: { name: h.exchange, acronym: h.exchange, micCode: '', currency: h.currency },
+    lastRefresh: h.createdAt,
+    price: h.currentPrice,
+    ask: h.currentPrice,
+    bid: h.currentPrice,
+    volume: 0,
+    type: h.assetType,
+  }
+}
+
+function openSell(h: Holding) {
+  sellModalHolding.value = h
+}
+
+function onSellSubmitted() {
+  sellModalHolding.value = null
+  loadHoldings()
+}
+
+async function loadHoldings() {
+  holdingsLoading.value = true
+  try {
+    const res = await clientPortfolioApi.listHoldings()
+    holdings.value = res.data.holdings ?? []
+  } catch {
+    holdings.value = []
+  } finally {
+    holdingsLoading.value = false
+  }
 }
 
 onMounted(async () => {
+  await loadHoldings()
   await marketStore.fetchPortfolio()
 })
 </script>
@@ -51,24 +92,25 @@ onMounted(async () => {
       <RouterLink to="/client/securities" class="secondary-link">Nazad na hartije</RouterLink>
     </div>
 
-    <div v-if="marketStore.portfolioLoading" class="empty-state">Ucitavam portfolio...</div>
-    <div v-else-if="marketStore.error" class="error-box">{{ marketStore.error }}</div>
-    <div v-else-if="!marketStore.portfolio" class="empty-state">Portfolio trenutno nije dostupan.</div>
+    <div v-if="holdingsLoading" class="empty-state">Ucitavam portfolio...</div>
+    <div v-else-if="!holdings.length && !holdingsLoading" class="empty-state">Portfolio trenutno nema aktivnih pozicija.</div>
     <template v-else>
       <div class="summary-grid">
         <article class="summary-card primary">
           <span>Ukupna procenjena vrednost</span>
-          <strong>{{ formatAmount(marketStore.portfolio.estimatedValue) }}</strong>
+          <strong>{{ formatAmount(totalValue) }}</strong>
         </article>
         <article class="summary-card">
           <span>Nerealizovani P/L</span>
-          <strong :class="{ positive: marketStore.portfolio.unrealizedPnL >= 0, negative: marketStore.portfolio.unrealizedPnL < 0 }">
-            {{ formatAmount(marketStore.portfolio.unrealizedPnL) }}
+          <strong :class="{ positive: totalUnrealizedPnL >= 0, negative: totalUnrealizedPnL < 0 }">
+            {{ formatAmount(totalUnrealizedPnL) }}
           </strong>
         </article>
         <article class="summary-card">
-          <span>Broj pozicija</span>
-          <strong>{{ holdingsCount }}</strong>
+          <span>Realizovani profit</span>
+          <strong :class="{ positive: totalRealizedProfit >= 0, negative: totalRealizedProfit < 0 }">
+            {{ formatAmount(totalRealizedProfit) }}
+          </strong>
         </article>
         <article class="summary-card">
           <span>Najveca pozicija</span>
@@ -82,49 +124,65 @@ onMounted(async () => {
             <h2>Pozicije</h2>
             <span class="panel-meta">Sortirano po procenjenoj vrednosti, najvece prvo.</span>
           </div>
-          <span class="panel-meta">Generisano {{ new Date(marketStore.portfolio.generatedAt).toLocaleString('sr-RS') }}</span>
+          <span class="panel-meta">{{ holdingsCount }} pozicija</span>
         </div>
 
-        <div v-if="sortedItems.length === 0" class="empty-inline">Portfolio trenutno nema prikazane pozicije.</div>
+        <div v-if="sortedHoldings.length === 0" class="empty-inline">Portfolio trenutno nema prikazane pozicije.</div>
         <div v-else class="table-wrap">
           <table class="portfolio-table">
             <thead>
               <tr>
                 <th>Ticker</th>
                 <th>Naziv</th>
+                <th>Tip</th>
                 <th>Kolicina</th>
                 <th>Avg price</th>
                 <th>Current price</th>
                 <th>Market value</th>
-                <th>Udeo</th>
                 <th>P/L</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="item in sortedItems" :key="item.ticker">
+              <tr v-for="item in sortedHoldings" :key="item.id">
                 <td class="ticker">
-                  <RouterLink :to="`/client/securities/${item.ticker}`">{{ item.ticker }}</RouterLink>
+                  <RouterLink :to="`/client/securities/${item.assetTicker}`">{{ item.assetTicker }}</RouterLink>
                 </td>
                 <td>
-                  <div class="asset-name">{{ item.name }}</div>
+                  <div class="asset-name">{{ item.assetName }}</div>
                   <div class="asset-meta">{{ item.exchange }} | {{ item.currency }}</div>
                 </td>
+                <td><span class="type-badge">{{ item.assetType }}</span></td>
                 <td>{{ item.quantity.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }}</td>
-                <td>{{ formatAmount(item.averagePrice) }}</td>
+                <td>{{ formatAmount(item.avgBuyPrice) }}</td>
                 <td>{{ formatAmount(item.currentPrice) }}</td>
                 <td>{{ formatAmount(item.marketValue) }}</td>
-                <td>{{ positionShare(item.marketValue).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}%</td>
                 <td>
-                  <div :class="{ positive: item.pnl >= 0, negative: item.pnl < 0 }">
-                    {{ formatAmount(item.pnl) }}
+                  <div :class="{ positive: item.unrealizedPnL >= 0, negative: item.unrealizedPnL < 0 }">
+                    {{ formatAmount(item.unrealizedPnL) }}
                   </div>
-                  <div class="asset-meta">{{ item.pnlPercent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}%</div>
+                  <div class="asset-meta">{{ item.unrealizedPnLPct.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}%</div>
+                </td>
+                <td>
+                  <button class="sell-btn" @click="openSell(item)">Prodaj</button>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
       </section>
+
+      <!-- Sell modal -->
+      <BuyOrderModal
+        v-if="sellModalHolding"
+        :listing="holdingToListing(sellModalHolding)"
+        user-type="client"
+        direction="sell"
+        :max-quantity="Math.floor(sellModalHolding.quantity)"
+        :preselected-account-id="sellModalHolding.accountId"
+        @close="sellModalHolding = null"
+        @submitted="onSellSubmitted"
+      />
     </template>
   </div>
 </template>
@@ -276,15 +334,33 @@ onMounted(async () => {
   color: #64748b;
 }
 
-.positive {
-  color: #15803d;
-  font-weight: 700;
+.positive { color: #15803d; font-weight: 700; }
+.negative { color: #b91c1c; font-weight: 700; }
+
+.type-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
-.negative {
-  color: #b91c1c;
+.sell-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 8px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 12px;
   font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
 }
+.sell-btn:hover { background: #b91c1c; }
 
 .empty-state,
 .error-box {
