@@ -9,6 +9,7 @@ import {
   type OtcContractStatus,
   type OtcOfferStatus,
   type PublicOtcStock,
+  type SagaTransaction,
 } from '../api/otc'
 
 export const useOtcStore = defineStore('otc', () => {
@@ -23,6 +24,9 @@ export const useOtcStore = defineStore('otc', () => {
   const loadingOffers = ref(false)
   const creatingOffer = ref(false)
   const updatingOffer = ref(false)
+  const exercisingContract = ref(false)
+  const currentSaga = ref<SagaTransaction | null>(null)
+  const sagaError = ref('')
   const error = ref('')
 
   const availablePublicQuantity = computed(() =>
@@ -138,6 +142,64 @@ export const useOtcStore = defineStore('otc', () => {
     }
   }
 
+  async function exerciseContract(contractId: number) {
+    exercisingContract.value = true
+    sagaError.value = ''
+    currentSaga.value = null
+    try {
+      const res = await otcApi.exerciseContract(contractId)
+      const sagaId = res.data.sagaId
+      if (!sagaId) {
+        sagaError.value = res.data.message ?? 'Saga did not start.'
+        throw new Error(sagaError.value)
+      }
+      const saga = await pollSagaUntilDone(sagaId)
+      return { sagaId, saga }
+    } catch (e: any) {
+      const message = e?.response?.data?.message ?? e?.message ?? 'Failed to exercise OTC contract.'
+      sagaError.value = message
+      const sagaId = e?.response?.data?.sagaId
+      if (sagaId) {
+        try {
+          const status = await otcApi.getSagaStatus(sagaId)
+          currentSaga.value = status.data.saga
+        } catch {
+          // ignore secondary failures
+        }
+      }
+      throw e
+    } finally {
+      exercisingContract.value = false
+    }
+  }
+
+  async function pollSagaUntilDone(sagaId: number, maxPolls = 30) {
+    const terminal = new Set([
+      'completed',
+      'failed',
+      'rolled_back',
+      'requires_manual_intervention',
+    ])
+    for (let i = 0; i < maxPolls; i++) {
+      try {
+        const res = await otcApi.getSagaStatus(sagaId)
+        currentSaga.value = res.data.saga
+        if (terminal.has(res.data.saga.status)) {
+          return res.data.saga
+        }
+      } catch {
+        // transient — try again next tick
+      }
+      await new Promise((r) => setTimeout(r, 700))
+    }
+    return currentSaga.value
+  }
+
+  function clearSagaProgress() {
+    currentSaga.value = null
+    sagaError.value = ''
+  }
+
   async function cancelOffer(offerId: number) {
     updatingOffer.value = true
     error.value = ''
@@ -164,6 +226,9 @@ export const useOtcStore = defineStore('otc', () => {
     loadingOffers,
     creatingOffer,
     updatingOffer,
+    exercisingContract,
+    currentSaga,
+    sagaError,
     error,
     availablePublicQuantity,
     validContracts,
@@ -176,5 +241,7 @@ export const useOtcStore = defineStore('otc', () => {
     acceptOffer,
     declineOffer,
     cancelOffer,
+    exerciseContract,
+    clearSagaProgress,
   }
 })
