@@ -87,6 +87,47 @@ export interface CounterOtcOfferPayload {
   premium: number
 }
 
+export type SagaStatus =
+  | 'in_progress'
+  | 'completed'
+  | 'failed'
+  | 'rolling_back'
+  | 'rolled_back'
+  | 'requires_manual_intervention'
+
+export type SagaStepStatus =
+  | 'pending'
+  | 'in_progress'
+  | 'completed'
+  | 'failed'
+  | 'compensated'
+
+export interface SagaStep {
+  stepNumber: number
+  name: string
+  status: SagaStepStatus
+  executedAt?: string
+  errorMessage?: string
+}
+
+export interface SagaTransaction {
+  id: number
+  type: string
+  status: SagaStatus
+  currentStep: number
+  retryCount: number
+  error?: string
+  createdAt: string
+  updatedAt: string
+  steps: SagaStep[]
+}
+
+export interface ExerciseContractResponse {
+  sagaId: number
+  contract?: OtcContract
+  message?: string
+}
+
 export const otcApi = {
   listPublicStocks: () =>
     clientApi.get<{ stocks: PublicOtcStock[]; count: number }>('/otc/public-stocks'),
@@ -115,4 +156,10 @@ export const otcApi = {
 
   cancelOffer: (offerId: number) =>
     clientApi.post<{ offer: OtcOffer }>(`/otc/offers/${offerId}/cancel`),
+
+  exerciseContract: (contractId: number) =>
+    clientApi.post<ExerciseContractResponse>(`/otc/contracts/${contractId}/exercise`),
+
+  getSagaStatus: (sagaId: number) =>
+    clientApi.get<{ saga: SagaTransaction }>(`/otc/saga/${sagaId}`),
 }
