@@ -5,6 +5,8 @@ import type { CreateOrderPayload, OrderType } from '../api/order'
 import { clientAccountApi } from '../api/clientAccount'
 import { accountApi } from '../api/account'
 import { useClientAuthStore } from '../stores/clientAuth'
+import { useAuthStore } from '../stores/auth'
+import { fundApi, type FundSummary } from '../api/fund'
 import type { ListingItem } from '../api/market'
 
 // ---------------------------------------------------------------------------
@@ -39,9 +41,30 @@ interface AccountOption {
 }
 
 const clientAuth = useClientAuthStore()
+const employeeAuth = useAuthStore()
 
 const accounts = ref<AccountOption[]>([])
 const accountsLoading = ref(false)
+
+// --- Fund buy support (FOND-BE-8 / FOND-FE-16) -------------------------------
+// Supervisor employees can choose to place a buy order on behalf of an
+// investment fund instead of the bank. When `forSelection === 'fund'`, the
+// account list is replaced with the selected fund's RSD account and the
+// fundId is forwarded to the order create endpoint.
+type ForSelection = 'bank' | 'fund'
+const forSelection = ref<ForSelection>('bank')
+const funds = ref<FundSummary[]>([])
+const fundsLoading = ref(false)
+const selectedFundId = ref<number | null>(null)
+const isEmployeeBuy = computed(() =>
+  props.userType === 'employee' && props.direction === 'buy',
+)
+const canPickFund = computed(() =>
+  isEmployeeBuy.value && employeeAuth.hasPermission?.('employeeSupervisor'),
+)
+const selectedFund = computed(() =>
+  funds.value.find((f) => f.id === selectedFundId.value) ?? null,
+)
 
 // Form fields
 const quantity = ref(1)
@@ -211,6 +234,10 @@ async function submitOrder() {
       accountId: selectedAccountId.value,
       afterHours: afterHours.value,
     }
+    if (isEmployeeBuy.value && forSelection.value === 'fund' && selectedFundId.value) {
+      payload.fundId = selectedFundId.value
+      payload.accountId = selectedFund.value?.accountId ?? selectedAccountId.value
+    }
     if (props.userType === 'client') {
       await clientOrderApi.createOrder(payload)
     } else {
@@ -226,7 +253,34 @@ async function submitOrder() {
   }
 }
 
-onMounted(loadAccounts)
+async function loadFunds() {
+  if (!canPickFund.value) return
+  fundsLoading.value = true
+  try {
+    const res = await fundApi.list()
+    funds.value = res.data?.funds ?? []
+    if (funds.value.length > 0 && selectedFundId.value === null) {
+      selectedFundId.value = funds.value[0]!.id
+    }
+  } catch {
+    // Non-fatal — fund radio simply stays disabled.
+  } finally {
+    fundsLoading.value = false
+  }
+}
+
+// When the supervisor flips to "Za fond", swap the visible account to the
+// fund's RSD account so the user sees and submits the correct one.
+watch([forSelection, selectedFundId], () => {
+  if (forSelection.value === 'fund' && selectedFund.value) {
+    selectedAccountId.value = selectedFund.value.accountId
+  }
+})
+
+onMounted(async () => {
+  await loadAccounts()
+  await loadFunds()
+})
 </script>
 
 <template>
@@ -294,6 +348,34 @@ onMounted(loadAccounts)
           <div v-if="needsStop || orderType === 'market'" class="field">
             <label>Stop vrednost ({{ listing.exchange.currency }}){{ needsStop ? '' : ' — opciono' }}</label>
             <input type="number" v-model.number="stopValue" min="0.01" step="0.01" placeholder="0.00" />
+          </div>
+
+          <!-- Buyer selector (supervisor only) -->
+          <div v-if="canPickFund" class="field field-full">
+            <label>Kupac</label>
+            <div class="for-radio-group">
+              <label class="for-radio-label">
+                <input type="radio" value="bank" v-model="forSelection" />
+                <span>Za banku</span>
+              </label>
+              <label class="for-radio-label">
+                <input type="radio" value="fund" v-model="forSelection" :disabled="funds.length === 0" />
+                <span>Za investicioni fond</span>
+              </label>
+            </div>
+            <div v-if="forSelection === 'fund'" class="fund-picker">
+              <select v-model.number="selectedFundId" :disabled="fundsLoading || funds.length === 0">
+                <option v-if="fundsLoading" :value="null" disabled>Učitavam fondove...</option>
+                <option v-else-if="funds.length === 0" :value="null" disabled>Nema fondova</option>
+                <option v-for="f in funds" :key="f.id" :value="f.id">
+                  {{ f.naziv }} — likvidnost {{ f.liquidCashRSD.toFixed(2) }} RSD
+                </option>
+              </select>
+              <p v-if="selectedFund" class="field-hint">
+                Vrednost fonda {{ selectedFund.fundValueRSD.toFixed(2) }} RSD,
+                profit {{ selectedFund.profitRSD.toFixed(2) }} RSD.
+              </p>
+            </div>
           </div>
 
           <!-- Account -->
@@ -670,4 +752,12 @@ onMounted(loadAccounts)
 }
 .btn-sell:hover:not(:disabled) { background: #b91c1c; }
 .btn-sell:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.for-radio-group { display: flex; gap: 16px; padding: 4px 0; }
+.for-radio-label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 14px; color: #0f172a; }
+.fund-picker { margin-top: 8px; }
+.fund-picker select {
+  width: 100%; padding: 9px 12px; border: 1px solid #cbd5e1; border-radius: 8px;
+  font-size: 14px; color: #0f172a; background: #fff;
+}
 </style>
