@@ -21,6 +21,9 @@ export interface CreateOrderPayload {
   isMargin?: boolean
   accountId: number
   afterHours?: boolean
+  // Set when a supervisor places a buy order on behalf of an investment fund;
+  // the backend rewrites the order owner from the bank to the fund.
+  fundId?: number
 }
 
 export interface Order {

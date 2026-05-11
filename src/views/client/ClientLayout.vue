@@ -58,6 +58,10 @@ function isPaymentSection() {
           OTC ponude
         </RouterLink>
 
+        <RouterLink to="/client/funds" class="sidebar-link" :class="{ active: isActive('/client/funds') }">
+          <span class="sidebar-icon">F</span><span>Fondovi</span>
+        </RouterLink>
+
         <RouterLink to="/client/transfers" class="sidebar-link" :class="{ active: isActive('/client/transfers') }">
           <span class="sidebar-icon">&lt;&gt;</span><span>Transferi</span>
         </RouterLink>

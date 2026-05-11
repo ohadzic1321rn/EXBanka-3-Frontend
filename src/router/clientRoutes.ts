@@ -51,6 +51,14 @@ export const clientRoutes: RouteRecordRaw[] = [
         meta: { clientTradingOnly: true },
       },
       {
+        path: 'funds',
+        component: () => import('../views/client/ClientFundsView.vue'),
+      },
+      {
+        path: 'funds/:id(\\d+)',
+        component: () => import('../views/client/ClientFundDetailView.vue'),
+      },
+      {
         path: 'prenos',
         component: () => import('../views/client/ClientPrenosView.vue'),
       },
