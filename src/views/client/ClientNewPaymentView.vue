@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { validateAccountNumber } from '../../utils/accountValidation'
+import { validateAccountNumber, isCrossBankAccount, bankNameOf } from '../../utils/accountValidation'
 import { useRouter } from 'vue-router'
 import { useClientAuthStore } from '../../stores/clientAuth'
 import { useClientAccountStore } from '../../stores/clientAccount'
 import { useRecipientStore } from '../../stores/recipient'
 import { usePaymentStore } from '../../stores/payment'
-import { SIFRE_PLACANJA } from '../../api/payment'
+import { SIFRE_PLACANJA, crossBankPaymentApi } from '../../api/payment'
+import type { CrossBankPaymentResponse } from '../../api/payment'
 import { recipientApi } from '../../api/recipient'
 import type { PaymentItem } from '../../api/payment'
 
@@ -18,7 +19,12 @@ const paymentStore = usePaymentStore()
 
 const clientId = computed(() => String(clientAuthStore.client?.id ?? ''))
 
-const step = ref<'form' | 'confirm' | 'verify' | 'success'>('form')
+const step = ref<'form' | 'confirm' | 'verify' | 'crossbank' | 'success'>('form')
+
+const crossBankPayment = ref<CrossBankPaymentResponse | null>(null)
+const crossBankError = ref('')
+const crossBankSubmitting = ref(false)
+let crossBankPollTimer: ReturnType<typeof setInterval> | null = null
 
 const form = ref({
   fromAccountId: '',
@@ -116,6 +122,9 @@ const isNewRecipient = computed(() => {
   return !recipientStore.recipients.some(r => r.brojRacuna === receiverBrojRacuna.value)
 })
 
+const isCrossBank = computed(() => isCrossBankAccount(receiverBrojRacuna.value))
+const recipientBankLabel = computed(() => bankNameOf(receiverBrojRacuna.value))
+
 function goToConfirm() {
   formError.value = ''
   if (!form.value.fromAccountId) { formError.value = 'Izaberite račun platioca.'; return }
@@ -140,6 +149,10 @@ function goToConfirmSecure() {
 void goToConfirm
 
 async function handleSubmit() {
+  if (isCrossBank.value) {
+    await handleCrossBankSubmit()
+    return
+  }
   try {
     const payment = await paymentStore.createPayment({
       racunPosiljaocaId: Number(form.value.fromAccountId),
@@ -156,6 +169,65 @@ async function handleSubmit() {
   } catch (e: any) {
     formError.value = e.response?.data?.message || 'Greška pri kreiranju plaćanja.'
     step.value = 'form'
+  }
+}
+
+async function handleCrossBankSubmit() {
+  const sender = fromAccount.value
+  if (!sender) { formError.value = 'Izaberite račun platioca.'; return }
+  crossBankError.value = ''
+  crossBankSubmitting.value = true
+  crossBankPayment.value = null
+  step.value = 'crossbank'
+  try {
+    const res = await crossBankPaymentApi.create({
+      senderAccountNumber: sender.brojRacuna,
+      recipientAccountNumber: receiverBrojRacuna.value,
+      currency: sender.currencyKod,
+      amount: Number(form.value.iznos),
+      message: form.value.svrha,
+      paymentCode: form.value.sifraPlacanja,
+      paymentPurpose: form.value.svrha,
+    })
+    crossBankPayment.value = res.data.payment as CrossBankPaymentResponse
+    if (crossBankPayment.value?.status === 'pending') {
+      startCrossBankPoll(crossBankPayment.value.id)
+    } else {
+      await accountStore.fetchAccounts(clientId.value)
+    }
+  } catch (e: any) {
+    const data = e?.response?.data
+    crossBankPayment.value = (data?.payment as CrossBankPaymentResponse) ?? null
+    crossBankError.value = data?.message || 'Greška pri kreiranju prekograničnog plaćanja.'
+    if (crossBankPayment.value?.status === 'pending' && crossBankPayment.value?.id) {
+      startCrossBankPoll(crossBankPayment.value.id)
+    }
+  } finally {
+    crossBankSubmitting.value = false
+  }
+}
+
+function startCrossBankPoll(id: number) {
+  stopCrossBankPoll()
+  crossBankPollTimer = setInterval(async () => {
+    try {
+      const res = await crossBankPaymentApi.get(id)
+      const p = res.data.payment as CrossBankPaymentResponse
+      crossBankPayment.value = p
+      if (p.status !== 'pending') {
+        stopCrossBankPoll()
+        await accountStore.fetchAccounts(clientId.value)
+      }
+    } catch {
+      // transient — keep polling
+    }
+  }, 2000)
+}
+
+function stopCrossBankPoll() {
+  if (crossBankPollTimer) {
+    clearInterval(crossBankPollTimer)
+    crossBankPollTimer = null
   }
 }
 
@@ -242,11 +314,16 @@ function startNew() {
   verifySecondsLeft.value = 300
   codeExpired.value = false
   failedAttempts.value = 0
+  crossBankPayment.value = null
+  crossBankError.value = ''
+  crossBankSubmitting.value = false
+  stopCrossBankPoll()
   step.value = 'form'
 }
 
 onUnmounted(() => {
   if (verifyTimerInterval) clearInterval(verifyTimerInterval)
+  stopCrossBankPoll()
 })
 
 onMounted(async () => {
@@ -294,6 +371,10 @@ onMounted(async () => {
           />
           <div v-else class="pay-readonly">
             {{ receiverBrojRacuna || 'Izaberite primaoca iz liste' }}
+          </div>
+          <div v-if="isCrossBank" class="pay-bank-chip">
+            <span class="pay-bank-chip-dot">●</span>
+            Prekogranično plaćanje · {{ recipientBankLabel }}
           </div>
         </div>
 
@@ -376,12 +457,105 @@ onMounted(async () => {
             <span>Sa računa</span>
             <span class="pay-mono">{{ fromAccount?.brojRacuna }}</span>
           </div>
+          <div v-if="isCrossBank" class="pay-summary-row">
+            <span>Tip plaćanja</span>
+            <span class="pay-bank-chip pay-bank-chip-inline">Prekogranično · {{ recipientBankLabel }}</span>
+          </div>
         </div>
         <div v-if="formError" class="pay-error">{{ formError }}</div>
+        <div v-if="isCrossBank" class="pay-info-note">
+          Plaćanje se izvršava 2-faznim protokolom između banaka. Bez verifikacionog koda — banka primaoca odlučuje.
+        </div>
         <div class="pay-actions">
           <button class="pay-btn pay-btn-sec" @click="step = 'form'">Nazad</button>
-          <button class="pay-btn pay-btn-primary" :disabled="paymentStore.loading" @click="handleSubmit">
-            {{ paymentStore.loading ? 'Šaljem...' : 'Potvrdi' }}
+          <button class="pay-btn pay-btn-primary" :disabled="paymentStore.loading || crossBankSubmitting" @click="handleSubmit">
+            {{ (paymentStore.loading || crossBankSubmitting) ? 'Šaljem...' : 'Potvrdi' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- CROSS-BANK 2PC PROGRESS -->
+      <div v-else-if="step === 'crossbank'">
+        <div class="pay-section-label">Prekogranično plaćanje · {{ recipientBankLabel }}</div>
+
+        <div class="pay-saga-steps">
+          <div class="pay-saga-step" :class="{ 'pay-saga-active': crossBankSubmitting, 'pay-saga-done': !crossBankSubmitting }">
+            <div class="pay-saga-icon">{{ crossBankSubmitting ? '⏳' : '✓' }}</div>
+            <div class="pay-saga-label">
+              <strong>1. Rezervacija sredstava</strong>
+              <div class="pay-saga-sub">Iznos je rezervisan na Vašem računu.</div>
+            </div>
+          </div>
+          <div class="pay-saga-step" :class="{
+            'pay-saga-active': crossBankSubmitting,
+            'pay-saga-done': !crossBankSubmitting && crossBankPayment && crossBankPayment.status !== 'pending' && crossBankPayment.status !== 'failed',
+            'pay-saga-fail': crossBankPayment && (crossBankPayment.status === 'rejected' || crossBankPayment.status === 'failed'),
+          }">
+            <div class="pay-saga-icon">
+              <span v-if="crossBankSubmitting">⏳</span>
+              <span v-else-if="crossBankPayment?.status === 'rejected' || crossBankPayment?.status === 'failed'">✗</span>
+              <span v-else-if="crossBankPayment?.status === 'committed'">✓</span>
+              <span v-else>⋯</span>
+            </div>
+            <div class="pay-saga-label">
+              <strong>2. Glasanje banke primaoca</strong>
+              <div class="pay-saga-sub">{{ recipientBankLabel }} odlučuje da li prihvata plaćanje.</div>
+            </div>
+          </div>
+          <div class="pay-saga-step" :class="{
+            'pay-saga-done': crossBankPayment?.status === 'committed',
+            'pay-saga-fail': crossBankPayment?.status === 'rejected' || crossBankPayment?.status === 'failed',
+            'pay-saga-active': crossBankPayment?.status === 'pending' && !crossBankSubmitting,
+          }">
+            <div class="pay-saga-icon">
+              <span v-if="crossBankPayment?.status === 'committed'">✓</span>
+              <span v-else-if="crossBankPayment?.status === 'rejected' || crossBankPayment?.status === 'failed'">✗</span>
+              <span v-else-if="crossBankPayment?.status === 'pending'">⏳</span>
+              <span v-else>⋯</span>
+            </div>
+            <div class="pay-saga-label">
+              <strong>3. Finalizacija (commit / rollback)</strong>
+              <div class="pay-saga-sub">
+                <template v-if="crossBankPayment?.status === 'committed'">Sredstva su uspešno preneta.</template>
+                <template v-else-if="crossBankPayment?.status === 'rejected'">Plaćanje odbijeno — sredstva oslobođena.</template>
+                <template v-else-if="crossBankPayment?.status === 'failed'">Greška u protokolu — sredstva oslobođena.</template>
+                <template v-else>Čeka se odgovor partner banke…</template>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="crossBankPayment" class="pay-saga-summary">
+          <div class="pay-summary-row">
+            <span>Status</span>
+            <span :class="['pay-status-badge', `pay-status-${crossBankPayment.status}`]">
+              {{ crossBankPayment.status }}
+            </span>
+          </div>
+          <div class="pay-summary-row">
+            <span>Iznos</span>
+            <span>{{ crossBankPayment.amount.toLocaleString('sr-RS', { minimumFractionDigits: 2 }) }} {{ crossBankPayment.currency }}</span>
+          </div>
+          <div class="pay-summary-row">
+            <span>Račun primaoca</span>
+            <span class="pay-mono">{{ crossBankPayment.recipientAccountNumber }}</span>
+          </div>
+          <div class="pay-summary-row" v-if="crossBankPayment.lastError">
+            <span>Razlog</span>
+            <span>{{ crossBankPayment.lastError }}</span>
+          </div>
+        </div>
+
+        <div v-if="crossBankError && (!crossBankPayment || crossBankPayment.status === 'failed')" class="pay-error">
+          {{ crossBankError }}
+        </div>
+
+        <div class="pay-actions">
+          <button class="pay-btn pay-btn-sec" :disabled="crossBankSubmitting || crossBankPayment?.status === 'pending'" @click="router.push('/client/payments')">
+            Pregled plaćanja
+          </button>
+          <button class="pay-btn pay-btn-primary" :disabled="crossBankSubmitting || crossBankPayment?.status === 'pending'" @click="startNew">
+            Novo plaćanje
           </button>
         </div>
       </div>
@@ -568,4 +742,54 @@ onMounted(async () => {
   margin-top: 16px; padding: 12px 16px; background: #dcfce7;
   border-radius: 8px; color: #166534; font-size: 14px; font-weight: 500;
 }
+
+/* Cross-bank chip + info */
+.pay-bank-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 4px; padding: 4px 10px; border-radius: 999px;
+  background: #ecfeff; color: #155e75; border: 1px solid #a5f3fc;
+  font-size: 12px; font-weight: 600;
+}
+.pay-bank-chip-dot { color: #06b6d4; font-size: 10px; }
+.pay-bank-chip-inline { margin-top: 0; }
+.pay-info-note {
+  padding: 10px 14px; background: #f0f9ff; color: #075985;
+  border: 1px solid #bae6fd; border-radius: 8px;
+  font-size: 13px; margin-bottom: 12px;
+}
+
+/* 2PC SAGA-style progress */
+.pay-saga-steps { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
+.pay-saga-step {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 14px; border-radius: 10px;
+  background: #f8fafc; border: 1px solid #e2e8f0;
+  opacity: 0.6; transition: all 0.2s;
+}
+.pay-saga-step.pay-saga-active { opacity: 1; background: #eff6ff; border-color: #bfdbfe; }
+.pay-saga-step.pay-saga-done { opacity: 1; background: #f0fdf4; border-color: #bbf7d0; }
+.pay-saga-step.pay-saga-fail { opacity: 1; background: #fef2f2; border-color: #fecaca; }
+.pay-saga-icon {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: #fff; font-size: 14px; flex-shrink: 0;
+  border: 1px solid currentColor;
+}
+.pay-saga-step.pay-saga-active .pay-saga-icon { color: #2563eb; }
+.pay-saga-step.pay-saga-done .pay-saga-icon { color: #16a34a; }
+.pay-saga-step.pay-saga-fail .pay-saga-icon { color: #dc2626; }
+.pay-saga-label { font-size: 14px; color: #0f172a; }
+.pay-saga-label strong { display: block; margin-bottom: 2px; }
+.pay-saga-sub { font-size: 13px; color: #64748b; }
+
+.pay-saga-summary { margin: 16px 0; display: flex; flex-direction: column; }
+.pay-status-badge {
+  padding: 3px 10px; border-radius: 999px; font-size: 12px;
+  font-weight: 700; text-transform: uppercase;
+}
+.pay-status-pending     { background: #fef9c3; color: #854d0e; }
+.pay-status-committed   { background: #dcfce7; color: #166534; }
+.pay-status-rejected    { background: #fef2f2; color: #b91c1c; }
+.pay-status-failed      { background: #fef2f2; color: #b91c1c; }
+.pay-status-rolled_back { background: #f1f5f9; color: #475569; }
 </style>
