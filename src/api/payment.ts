@@ -91,3 +91,43 @@ export const paymentApi = {
   get: (id: string) =>
     clientApi.get(`/payments/${id}`),
 }
+
+export interface CrossBankPaymentResponse {
+  id: number
+  transactionId: { routingNumber: number; id: string }
+  direction: string
+  partnerRoutingNumber: number
+  senderAccountNumber: string
+  recipientAccountNumber: string
+  currency: string
+  amount: number
+  message?: string
+  paymentCode?: string
+  paymentPurpose?: string
+  status: 'pending' | 'committed' | 'rejected' | 'failed' | 'rolled_back'
+  lastError?: string
+  createdAt: string
+  updatedAt: string
+  resolvedAt?: string
+}
+
+export interface CreateCrossBankPayload {
+  senderAccountNumber: string
+  recipientAccountNumber: string
+  currency: string
+  amount: number
+  message?: string
+  paymentCode?: string
+  paymentPurpose?: string
+}
+
+export const crossBankPaymentApi = {
+  create: (data: CreateCrossBankPayload) =>
+    clientApi.post('/payments/cross-bank', data),
+
+  list: (limit = 50) =>
+    clientApi.get('/payments/cross-bank', { params: { limit } }),
+
+  get: (id: number | string) =>
+    clientApi.get(`/payments/cross-bank/${id}`),
+}
