@@ -1,5 +1,6 @@
 import { defineConfig } from 'cypress'
 import { cleanupCypressData } from './cypress/support/db-cleanup.js'
+import { dbExec } from './cypress/support/db-seed.js'
 
 export default defineConfig({
   e2e: {
@@ -10,6 +11,7 @@ export default defineConfig({
       on('after:run', () => {
         cleanupCypressData()
       })
+      on('task', { dbExec })
     },
   },
   env: {
