@@ -33,8 +33,11 @@ export interface OtcContract {
   amount: number
   strikePrice: number
   currentPrice: number
+  exercisedAtPrice: number
   premium: number
-  profit: number
+  profit: number // buyer's P&L (legacy alias for buyerProfit)
+  buyerProfit: number
+  sellerProfit: number
   settlementDate: string
   buyerId: number
   buyerType: string

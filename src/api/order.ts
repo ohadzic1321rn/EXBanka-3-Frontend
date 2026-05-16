@@ -41,6 +41,10 @@ export interface Order {
   stopValue: number | null
   isAON: boolean
   isMargin: boolean
+  /** Outstanding bank-fronted balance for margin buys, in the account's currency. */
+  marginLoan: number
+  /** Stop-limit latch: true once the stop value has been crossed. */
+  stopTriggered: boolean
   status: OrderStatus
   isDone: boolean
   remainingPortions: number

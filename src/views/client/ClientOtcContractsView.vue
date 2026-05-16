@@ -226,9 +226,10 @@ onMounted(() => {
               <th>Ticker</th>
               <th>Kolicina</th>
               <th>Strike cena</th>
-              <th>Trzisna cena</th>
+              <th>Trzisna / Exercise cena</th>
               <th>Premija</th>
-              <th>Profit</th>
+              <th>Profit (Buyer)</th>
+              <th>Profit (Seller)</th>
               <th>Settlement</th>
               <th>Status</th>
               <th>Buyer</th>
@@ -246,10 +247,16 @@ onMounted(() => {
               </td>
               <td>{{ fmtQuantity(contract.amount) }}</td>
               <td>{{ fmtMoney(contract.strikePrice) }}</td>
-              <td>{{ fmtMoney(contract.currentPrice) }}</td>
+              <td>
+                {{ fmtMoney(contract.status === 'exercised' ? contract.exercisedAtPrice : contract.currentPrice) }}
+                <div v-if="contract.status === 'exercised'" class="asset-meta">na trenutku exercise-a</div>
+              </td>
               <td>{{ fmtMoney(contract.premium) }}</td>
-              <td :class="profitClass(contract.profit)">
-                {{ fmtMoney(contract.profit) }} {{ contract.exchange.currency }}
+              <td :class="profitClass(contract.buyerProfit)">
+                {{ fmtMoney(contract.buyerProfit) }} {{ contract.exchange.currency }}
+              </td>
+              <td :class="profitClass(contract.sellerProfit)">
+                {{ fmtMoney(contract.sellerProfit) }} {{ contract.exchange.currency }}
               </td>
               <td>{{ new Date(contract.settlementDate).toLocaleDateString('sr-RS') }}</td>
               <td>
@@ -291,9 +298,15 @@ onMounted(() => {
           <div><span>Trzisna cena</span><strong>{{ fmtMoney(exerciseTarget.currentPrice) }} {{ exerciseTarget.exchange.currency }}</strong></div>
           <div><span>Premija</span><strong>{{ fmtMoney(exerciseTarget.premium) }} {{ exerciseTarget.exchange.currency }}</strong></div>
           <div>
-            <span>Procenjeni profit</span>
-            <strong :class="profitClass(exerciseTarget.profit)">
-              {{ fmtMoney(exerciseTarget.profit) }} {{ exerciseTarget.exchange.currency }}
+            <span>Procenjeni profit (Buyer)</span>
+            <strong :class="profitClass(exerciseTarget.buyerProfit)">
+              {{ fmtMoney(exerciseTarget.buyerProfit) }} {{ exerciseTarget.exchange.currency }}
+            </strong>
+          </div>
+          <div>
+            <span>Procenjeni profit (Seller)</span>
+            <strong :class="profitClass(exerciseTarget.sellerProfit)">
+              {{ fmtMoney(exerciseTarget.sellerProfit) }} {{ exerciseTarget.exchange.currency }}
             </strong>
           </div>
           <div><span>Settlement</span><strong>{{ new Date(exerciseTarget.settlementDate).toLocaleDateString('sr-RS') }}</strong></div>
