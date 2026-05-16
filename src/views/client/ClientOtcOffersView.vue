@@ -92,6 +92,14 @@ function isSeller(offer: OtcOffer) {
   return offer.sellerType === 'client' && offer.sellerId === currentClientId.value
 }
 
+function isLastModifier(offer: OtcOffer) {
+  return offer.modifiedByType === 'client' && offer.modifiedById === currentClientId.value
+}
+
+function isParticipant(offer: OtcOffer) {
+  return isBuyer(offer) || isSeller(offer)
+}
+
 function participantRole(offer: OtcOffer) {
   if (isBuyer(offer)) return 'Kupac'
   if (isSeller(offer)) return 'Prodavac'
@@ -106,11 +114,11 @@ function deviationClass(offer: OtcOffer) {
 }
 
 function canCounter(offer: OtcOffer) {
-  return offer.status === 'pending' && (isBuyer(offer) || isSeller(offer))
+  return offer.status === 'pending' && isParticipant(offer)
 }
 
 function canAccept(offer: OtcOffer) {
-  return offer.status === 'pending' && isSeller(offer)
+  return offer.status === 'pending' && isParticipant(offer) && !isLastModifier(offer)
 }
 
 function canDecline(offer: OtcOffer) {
@@ -259,7 +267,7 @@ onMounted(() => {
       <div class="panel-head">
         <div>
           <h2>OTC pregovori</h2>
-          <span class="panel-meta">Kupac moze da otkaze ponudu, prodavac da prihvati ili odbije, a obe strane mogu poslati kontraponudu.</span>
+          <span class="panel-meta">Kupac moze da otkaze ponudu, prodavac da odbije, a strana koja nije poslednja menjala uslove moze da prihvati ili posalje kontraponudu.</span>
         </div>
         <div class="status-tabs">
           <button
