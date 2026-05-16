@@ -172,8 +172,11 @@ async function loadAccounts() {
         }))
     }
     if (props.preselectedAccountId != null && props.preselectedAccountId !== 0) {
+      // Sell flow locks the account to the one used at buy time, so honor the
+      // preselected id even if it's not in the active list. For buys, fall
+      // back to the first active account when no preselection was supplied.
       selectedAccountId.value = props.preselectedAccountId
-    } else if (accounts.value.length > 0) {
+    } else if (props.direction !== 'sell' && accounts.value.length > 0) {
       selectedAccountId.value = accounts.value[0]!.id
     }
   } catch {

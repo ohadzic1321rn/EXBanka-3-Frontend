@@ -71,9 +71,15 @@ async function loadBankAccounts() {
   try {
     const res = await accountApi.listAll({ status: 'aktivan', pageSize: 200 })
     const items: any[] = res.data?.accounts ?? res.data?.content ?? res.data ?? []
+    // Bank operational accounts: no client owner, firma is set and is NOT the
+    // state firma (Republika Srbija). Fund-owned accounts have no firma so they
+    // are excluded automatically.
     bankAccounts.value = items
       .filter((a: any) =>
         (!a.clientId || a.clientId === '0' || a.clientId === 0) &&
+        !!a.firmaId && a.firmaId !== '0' && a.firmaId !== 0 &&
+        a.firma?.isState === false &&
+        a.podvrsta !== 'fondacija' &&
         (a.currencyKod === 'RSD' || a.currency?.kod === 'RSD'),
       )
       .map((a: any) => ({ id: Number(a.id), label: `${a.naziv || a.brojRacuna}` }))
