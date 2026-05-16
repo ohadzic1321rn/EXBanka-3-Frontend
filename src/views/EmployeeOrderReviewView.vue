@@ -187,6 +187,8 @@ onMounted(load)
             </td>
             <td>
               <span class="order-type-pill">{{ order.orderType.replace('_', '-') }}</span>
+              <span v-if="order.isMargin" class="margin-pill" :title="`Bank loan: ${formatPrice(order.marginLoan)}`">M</span>
+              <span v-if="order.orderType === 'stop_limit' && order.stopTriggered" class="trigger-pill" title="Stop has triggered">T</span>
             </td>
             <td>
               <span :class="['direction-pill', order.direction]">
@@ -416,6 +418,30 @@ onMounted(load)
   color: #334155;
   font-size: 12px;
   font-weight: 600;
+}
+
+.margin-pill {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: help;
+}
+
+.trigger-pill {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: help;
 }
 
 .direction-pill {
