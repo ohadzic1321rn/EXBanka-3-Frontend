@@ -1,6 +1,15 @@
 import { execSync } from 'child_process'
 
 const SQL = `
+DELETE FROM tax_records WHERE user_type = 'client' AND user_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com');
+DELETE FROM tax_records WHERE user_type = 'bank' AND user_id = 0 AND created_at >= NOW() - INTERVAL '1 day';
+DELETE FROM order_transactions WHERE order_id IN (SELECT id FROM orders WHERE user_type = 'client' AND user_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com'));
+DELETE FROM order_transactions WHERE order_id IN (SELECT id FROM orders WHERE placed_by IN (SELECT id FROM employees WHERE email LIKE 'cypress.employee.%@bank.com'));
+DELETE FROM orders WHERE user_type = 'client' AND user_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com');
+DELETE FROM orders WHERE placed_by IN (SELECT id FROM employees WHERE email LIKE 'cypress.employee.%@bank.com');
+DELETE FROM portfolio_holdings WHERE user_type = 'client' AND user_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com');
+DELETE FROM otc_offers WHERE seller_user_type = 'client' AND seller_user_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com');
+DELETE FROM otc_offers WHERE buyer_user_type = 'client' AND buyer_user_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com');
 DELETE FROM loan_installments WHERE loan_id IN (SELECT id FROM loans WHERE client_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com'));
 DELETE FROM transfers WHERE racun_posiljaoca_id IN (SELECT id FROM accounts WHERE client_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com')) OR racun_primaoca_id IN (SELECT id FROM accounts WHERE client_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com'));
 DELETE FROM payments WHERE racun_posiljaoca_id IN (SELECT id FROM accounts WHERE client_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com'));
@@ -12,6 +21,9 @@ DELETE FROM accounts WHERE client_id IN (SELECT id FROM clients WHERE email LIKE
 DELETE FROM client_permissions WHERE client_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com');
 DELETE FROM firmas WHERE vlasnik_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com');
 DELETE FROM clients WHERE email LIKE 'cypress.%@example.com';
+DELETE FROM actuary_profiles WHERE employee_id IN (SELECT id FROM employees WHERE email LIKE 'cypress.employee.%@bank.com');
+DELETE FROM employee_permissions WHERE employee_id IN (SELECT id FROM employees WHERE email LIKE 'cypress.employee.%@bank.com');
+DELETE FROM employees WHERE email LIKE 'cypress.employee.%@bank.com';
 `.trim().replace(/\n/g, ' ')
 
 export function cleanupCypressData() {
