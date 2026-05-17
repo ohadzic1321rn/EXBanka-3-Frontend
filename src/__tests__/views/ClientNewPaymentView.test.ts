@@ -46,13 +46,13 @@ const mockAccounts = [
 ]
 
 const mockRecipients = [
-  { id: '10', clientId: '5', naziv: 'EPS', brojRacuna: '333000000000000002' },
+  { id: '10', clientId: '5', naziv: 'EPS', brojRacuna: '111000000000000008' },
 ]
 
 const mockPayment = {
   id: 'p1',
   racunPosiljaocaId: '1',
-  racunPrimaocaBroj: '333000000000000002',
+  racunPrimaocaBroj: '111000000000000008',
   iznos: 5000,
   sifraPlacanja: '289',
   pozivNaBroj: '',
@@ -158,7 +158,7 @@ describe('ClientNewPaymentView', () => {
     await wrapper.findAll('button').find(b => b.text() === 'Nastavi')!.trigger('click')
 
     expect(wrapper.text()).toContain('Pregled naloga')
-    expect(wrapper.text()).toContain('333000000000000002')
+    expect(wrapper.text()).toContain('111000000000000008')
     expect(wrapper.text()).toContain('Struja')
   })
 
