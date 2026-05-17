@@ -9,6 +9,7 @@ import {
   createAgent,
   createSupervisor,
   loginEmployeeApi,
+  setActuaryLimit,
   setNeedApproval,
   DEFAULT_EMPLOYEE_PASSWORD,
 } from '../helpers/actuary'
@@ -37,7 +38,8 @@ function pickBankUsdAccount(supervisorToken) {
 }
 
 function seedPendingOrder(ctx) {
-  return setNeedApproval(ctx.supervisorToken, ctx.agent.id, true)
+  return setActuaryLimit(ctx.supervisorToken, ctx.agent.id, 10000000)
+    .then(() => setNeedApproval(ctx.supervisorToken, ctx.agent.id, true))
     .then(() => loginEmployeeApi(ctx.agent.email))
     .then((agentToken) => {
       ctx.agentToken = agentToken

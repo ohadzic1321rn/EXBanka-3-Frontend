@@ -84,21 +84,25 @@ export function updateClientPermissions(employeeToken, clientId, permissionNames
 }
 
 export function createAccount(employeeToken, clientId, currencyId, naziv, pocetnoStanje, overrides = {}) {
+  const tip = overrides.tip || 'tekuci'
+  const body = {
+    clientId: Number(clientId),
+    currencyId,
+    tip,
+    vrsta: overrides.vrsta || 'licni',
+    naziv,
+    pocetnoStanje,
+    ...(overrides.firmaId ? { firmaId: overrides.firmaId } : {}),
+  }
+  if (tip !== 'devizni') {
+    body.podvrsta = overrides.podvrsta || 'standardni'
+  }
   return cy
     .request({
       method: 'POST',
       url: `${API_BASE}/accounts/create`,
       headers: { Authorization: `Bearer ${employeeToken}` },
-      body: {
-        clientId: Number(clientId),
-        currencyId,
-        tip: overrides.tip || 'tekuci',
-        vrsta: overrides.vrsta || 'licni',
-        podvrsta: overrides.podvrsta || 'standardni',
-        naziv,
-        pocetnoStanje,
-        ...(overrides.firmaId ? { firmaId: overrides.firmaId } : {}),
-      },
+      body,
     })
     .its('body.account')
 }

@@ -24,4 +24,6 @@ export default defineConfig({
   defaultCommandTimeout: 10000,
   requestTimeout: 15000,
   responseTimeout: 15000,
+  video: true,
+  videoCompression: 32,
 })
