@@ -5,6 +5,8 @@ import { useClientPortfolioStore } from '../../stores/portfolio'
 import { useClientAuthStore } from '../../stores/clientAuth'
 import { clientPortfolioApi, type Holding } from '../../api/portfolio'
 import { clientTaxApi, type TaxSummary } from '../../api/tax'
+import { clientOrderApi, type Order } from '../../api/order'
+import { clientAccountApi, type ClientAccountItem } from '../../api/clientAccount'
 import BuyOrderModal from '../../components/BuyOrderModal.vue'
 import type { ListingItem } from '../../api/market'
 
@@ -35,6 +37,72 @@ async function fetchTaxSummary() {
   } catch {
     taxError.value = 'Nije moguće učitati porezne podatke.'
   }
+}
+
+// Buy-order history section
+const buyOrders = ref<Order[]>([])
+const buyOrdersError = ref('')
+const accountsById = ref<Record<string, ClientAccountItem>>({})
+
+async function fetchBuyOrders() {
+  try {
+    const res = await clientOrderApi.listOrders()
+    buyOrders.value = (res.data.orders || []).filter((o) => o.direction === 'buy')
+  } catch {
+    buyOrdersError.value = 'Nije moguće učitati istoriju kupovina.'
+  }
+}
+
+async function fetchClientAccountsForOrders() {
+  const clientId = authStore.client?.id
+  if (!clientId) return
+  try {
+    const res: any = await clientAccountApi.listByClient(String(clientId))
+    const items: ClientAccountItem[] = res.data?.accounts || res.data?.content || res.data || []
+    const map: Record<string, ClientAccountItem> = {}
+    for (const a of items) map[String(a.id)] = a
+    accountsById.value = map
+  } catch {
+    // best effort — table falls back to showing the raw account id
+  }
+}
+
+const sortedBuyOrders = computed(() =>
+  [...buyOrders.value].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  ),
+)
+
+const marginOrders = computed(() =>
+  sortedBuyOrders.value.filter((o) => o.isMargin),
+)
+
+function bankLoanAccountLabel(o: Order) {
+  const acc = accountsById.value[String(o.accountId)]
+  const currency = acc?.currencyKod || '—'
+  return `EXBanka — ${currency}`
+}
+
+function accountLabel(accountId: number) {
+  const acc = accountsById.value[String(accountId)]
+  if (!acc) return `#${accountId}`
+  return `${acc.naziv} (${acc.brojRacuna})`
+}
+
+function orderTypeLabel(t: string) {
+  const map: Record<string, string> = {
+    market: 'Market',
+    limit: 'Limit',
+    stop: 'Stop',
+    stop_limit: 'Stop-Limit',
+  }
+  return map[t] || t
+}
+
+function formatOrderDate(iso: string) {
+  if (!iso) return '-'
+  const d = new Date(iso)
+  return d.toLocaleDateString('sr-RS', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
 const sortedHoldings = computed(() =>
@@ -136,6 +204,8 @@ function onSellSubmitted() {
 onMounted(() => {
   portfolioStore.fetchAll()
   fetchTaxSummary()
+  fetchBuyOrders()
+  fetchClientAccountsForOrders()
 })
 </script>
 
@@ -263,6 +333,89 @@ onMounted(() => {
             <span>Plaćeno ove godine</span>
             <strong>{{ formatAmount(taxSummary.paid_this_year) }} RSD</strong>
           </div>
+        </div>
+      </section>
+
+      <!-- Buy order history -->
+      <section class="panel buy-history-panel">
+        <div class="panel-head">
+          <div>
+            <h2>Istorija kupovina akcija</h2>
+            <span class="panel-meta">Svi nalozi kupovine, najnoviji prvo.</span>
+          </div>
+          <span class="panel-meta">{{ buyOrders.length }} naloga</span>
+        </div>
+        <div v-if="buyOrdersError" class="error-box" style="margin:0">{{ buyOrdersError }}</div>
+        <div v-else-if="!buyOrders.length" class="empty-inline">Nema istorije kupovina.</div>
+        <div v-else class="buy-history-wrap">
+          <table class="portfolio-table buy-history-table">
+            <thead>
+              <tr>
+                <th>Datum</th>
+                <th>Akcija</th>
+                <th>Tip naloga</th>
+                <th>Količina</th>
+                <th>Stop</th>
+                <th>Limit</th>
+                <th>Margin</th>
+                <th>AON</th>
+                <th>After hours</th>
+                <th>Račun</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="o in sortedBuyOrders" :key="o.id">
+                <td>{{ formatOrderDate(o.createdAt) }}</td>
+                <td class="ticker">{{ o.assetTicker }}</td>
+                <td>{{ orderTypeLabel(o.orderType) }}</td>
+                <td>{{ formatQuantity(o.quantity) }}</td>
+                <td>{{ o.stopValue != null ? formatAmount(o.stopValue) : '-' }}</td>
+                <td>{{ o.limitValue != null ? formatAmount(o.limitValue) : '-' }}</td>
+                <td><span :class="['flag-badge', o.isMargin ? 'flag-on' : 'flag-off']">{{ o.isMargin ? 'Da' : 'Ne' }}</span></td>
+                <td><span :class="['flag-badge', o.isAON ? 'flag-on' : 'flag-off']">{{ o.isAON ? 'Da' : 'Ne' }}</span></td>
+                <td><span :class="['flag-badge', o.afterHours ? 'flag-on' : 'flag-off']">{{ o.afterHours ? 'Da' : 'Ne' }}</span></td>
+                <td>{{ accountLabel(o.accountId) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Margin orders -->
+      <section class="panel margin-history-panel">
+        <div class="panel-head">
+          <div>
+            <h2>Margin nalozi</h2>
+            <span class="panel-meta">Kupovine sa pozajmicom banke, najnoviji prvo.</span>
+          </div>
+          <span class="panel-meta">{{ marginOrders.length }} naloga</span>
+        </div>
+        <div v-if="!marginOrders.length" class="empty-inline">Nema margin naloga.</div>
+        <div v-else class="buy-history-wrap">
+          <table class="portfolio-table buy-history-table">
+            <thead>
+              <tr>
+                <th>Datum</th>
+                <th>Akcija</th>
+                <th>Tip</th>
+                <th>Količina</th>
+                <th>Račun klijenta</th>
+                <th>Račun banke (pozajmica)</th>
+                <th>Iznos pozajmice</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="o in marginOrders" :key="o.id">
+                <td>{{ formatOrderDate(o.createdAt) }}</td>
+                <td class="ticker">{{ o.assetTicker }}</td>
+                <td>{{ orderTypeLabel(o.orderType) }}</td>
+                <td>{{ formatQuantity(o.quantity) }}</td>
+                <td>{{ accountLabel(o.accountId) }}</td>
+                <td>{{ bankLoanAccountLabel(o) }}</td>
+                <td><strong>{{ formatAmount(o.marginLoan) }}</strong></td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -596,6 +749,50 @@ onMounted(() => {
   margin-top: 8px;
   font-size: 20px;
   color: #0f172a;
+}
+
+.buy-history-panel {
+  margin-top: 24px;
+}
+
+.buy-history-wrap {
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.buy-history-wrap .buy-history-table {
+  margin: 0;
+}
+
+.buy-history-wrap thead th {
+  position: sticky;
+  top: 0;
+  background: #f8fafc;
+  z-index: 1;
+}
+
+.flag-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.flag-on {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.flag-off {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.margin-history-panel {
+  margin-top: 24px;
 }
 
 .otc-btn {

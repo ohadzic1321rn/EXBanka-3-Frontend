@@ -1,4 +1,4 @@
-import { execSync } from 'child_process'
+import { execSync, execFileSync } from 'child_process'
 
 let cachedContainer = null
 
@@ -77,29 +77,37 @@ export function dbExec({ sql, params = [] }) {
 
   const container = findPostgresContainer()
   const interpolated = interpolate(sql.trim(), params)
+  const stripped = interpolated.replace(/;$/, '')
 
-  const wrappedSql = `SELECT row_to_json(t) FROM (${interpolated.replace(/;$/, '')}) t`
   const isSelect = /^\s*SELECT\b/i.test(interpolated)
+  const hasReturning = /\bRETURNING\b/i.test(interpolated)
+  const returnsRows = isSelect || hasReturning
+
+  let runSql
+  if (isSelect) {
+    runSql = `SELECT row_to_json(t) FROM (${stripped}) t`
+  } else if (hasReturning) {
+    runSql = `WITH t AS (${stripped}) SELECT row_to_json(t) FROM t`
+  } else {
+    runSql = interpolated
+  }
 
   let stdout = ''
   try {
-    if (isSelect) {
-      stdout = execSync(
-        `docker exec -i ${container} psql -U postgres -d bankdb -At -F '|' -c "${wrappedSql.replace(/"/g, '\\"')}"`,
-        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }
-      )
-    } else {
-      stdout = execSync(
-        `docker exec -i ${container} psql -U postgres -d bankdb -c "${interpolated.replace(/"/g, '\\"')}"`,
-        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }
-      )
-    }
+    const args = returnsRows
+      ? ['exec', '-i', container, 'psql', '-U', 'postgres', '-d', 'bankdb', '-At', '-F', '|', '-c', runSql]
+      : ['exec', '-i', container, 'psql', '-U', 'postgres', '-d', 'bankdb', '-c', runSql]
+    stdout = execFileSync('docker', args, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    })
   } catch (err) {
     const stderr = err.stderr ? err.stderr.toString() : ''
     throw new Error(`[db-seed] psql failed: ${err.message}\nSQL: ${interpolated}\nSTDERR: ${stderr}`)
   }
 
-  if (!isSelect) {
+  if (!returnsRows) {
     return { rows: [], command: stdout.trim() }
   }
 

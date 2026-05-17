@@ -8,8 +8,8 @@ DELETE FROM order_transactions WHERE order_id IN (SELECT id FROM orders WHERE pl
 DELETE FROM orders WHERE user_type = 'client' AND user_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com');
 DELETE FROM orders WHERE placed_by IN (SELECT id FROM employees WHERE email LIKE 'cypress.employee.%@bank.com');
 DELETE FROM portfolio_holdings WHERE user_type = 'client' AND user_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com');
-DELETE FROM otc_offers WHERE seller_user_type = 'client' AND seller_user_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com');
-DELETE FROM otc_offers WHERE buyer_user_type = 'client' AND buyer_user_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com');
+DELETE FROM otc_offers WHERE seller_type = 'client' AND seller_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com');
+DELETE FROM otc_offers WHERE buyer_type = 'client' AND buyer_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com');
 DELETE FROM loan_installments WHERE loan_id IN (SELECT id FROM loans WHERE client_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com'));
 DELETE FROM transfers WHERE racun_posiljaoca_id IN (SELECT id FROM accounts WHERE client_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com')) OR racun_primaoca_id IN (SELECT id FROM accounts WHERE client_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com'));
 DELETE FROM payments WHERE racun_posiljaoca_id IN (SELECT id FROM accounts WHERE client_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com'));
@@ -23,6 +23,7 @@ DELETE FROM firmas WHERE vlasnik_id IN (SELECT id FROM clients WHERE email LIKE 
 DELETE FROM clients WHERE email LIKE 'cypress.%@example.com';
 DELETE FROM actuary_profiles WHERE employee_id IN (SELECT id FROM employees WHERE email LIKE 'cypress.employee.%@bank.com');
 DELETE FROM employee_permissions WHERE employee_id IN (SELECT id FROM employees WHERE email LIKE 'cypress.employee.%@bank.com');
+DELETE FROM tokens WHERE employee_id IN (SELECT id FROM employees WHERE email LIKE 'cypress.employee.%@bank.com');
 DELETE FROM employees WHERE email LIKE 'cypress.employee.%@bank.com';
 `.trim().replace(/\n/g, ' ')
 
