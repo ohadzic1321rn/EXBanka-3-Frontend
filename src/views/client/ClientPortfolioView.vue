@@ -360,7 +360,9 @@ onMounted(() => {
                 <th>Margin</th>
                 <th>AON</th>
                 <th>After hours</th>
-                <th>Račun</th>
+                <th>Ukupno plaćeno</th>
+                <th>Stanje pre uplate</th>
+                <th>Stanje posle uplate</th>
               </tr>
             </thead>
             <tbody>
@@ -374,7 +376,9 @@ onMounted(() => {
                 <td><span :class="['flag-badge', o.isMargin ? 'flag-on' : 'flag-off']">{{ o.isMargin ? 'Da' : 'Ne' }}</span></td>
                 <td><span :class="['flag-badge', o.isAON ? 'flag-on' : 'flag-off']">{{ o.isAON ? 'Da' : 'Ne' }}</span></td>
                 <td><span :class="['flag-badge', o.afterHours ? 'flag-on' : 'flag-off']">{{ o.afterHours ? 'Da' : 'Ne' }}</span></td>
-                <td>{{ accountLabel(o.accountId) }}</td>
+                <td>{{ o.totalPaid > 0 ? formatAmount(o.totalPaid) : '-' }}</td>
+                <td>{{ o.balanceBefore > 0 || o.balanceAfter > 0 ? formatAmount(o.balanceBefore) : '-' }}</td>
+                <td>{{ o.balanceBefore > 0 || o.balanceAfter > 0 ? formatAmount(o.balanceAfter) : '-' }}</td>
               </tr>
             </tbody>
           </table>

@@ -48,6 +48,12 @@ export interface Order {
   status: OrderStatus
   isDone: boolean
   remainingPortions: number
+  /** Amount actually debited from the user's account at order creation, in the account's currency. Zero on sell orders. */
+  totalPaid: number
+  /** Account balance immediately before the buy debit. Zero on sell orders. */
+  balanceBefore: number
+  /** Account balance immediately after the buy debit. Zero on sell orders. */
+  balanceAfter: number
   afterHours: boolean
   accountId: number
   approvedBy: number | null

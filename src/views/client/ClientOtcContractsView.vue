@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useOtcStore } from '../../stores/otc'
 import { useClientAuthStore } from '../../stores/clientAuth'
+import { clientAccountApi } from '../../api/clientAccount'
 import type { OtcContract, OtcContractStatus } from '../../api/otc'
 
 const otcStore = useOtcStore()
@@ -35,6 +36,61 @@ const sortedContracts = computed(() =>
     new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime() || right.id - left.id
   )
 )
+
+const accountBalances = ref<Map<number, number>>(new Map())
+const accountCurrencies = ref<Map<number, string>>(new Map())
+const accountsLoading = ref(false)
+const accountsError = ref('')
+
+interface BuyerContractRow {
+  contract: OtcContract
+  balanceBefore: number | null
+  balanceAfter: number | null
+  currency: string
+}
+
+const buyerContractsWithBalances = computed<BuyerContractRow[]>(() => {
+  const buyerContracts = otcStore.contracts.filter(isBuyer)
+  if (buyerContracts.length === 0) return []
+
+  const byAccount = new Map<number, OtcContract[]>()
+  for (const contract of buyerContracts) {
+    const list = byAccount.get(contract.buyerAccountId) ?? []
+    list.push(contract)
+    byAccount.set(contract.buyerAccountId, list)
+  }
+
+  const rows: BuyerContractRow[] = []
+  for (const [accountId, contracts] of byAccount.entries()) {
+    contracts.sort((left, right) =>
+      new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime() || left.id - right.id
+    )
+
+    const liveBalance = accountBalances.value.get(accountId)
+    const accountCurrency = accountCurrencies.value.get(accountId) ?? ''
+
+    let laterPremiumSum = 0
+    for (let i = contracts.length - 1; i >= 0; i--) {
+      const contract = contracts[i]
+      if (!contract) continue
+      const balanceAfter = liveBalance != null ? liveBalance + laterPremiumSum : null
+      const balanceBefore = balanceAfter != null ? balanceAfter + contract.premium : null
+      rows.push({
+        contract,
+        balanceBefore,
+        balanceAfter,
+        currency: accountCurrency || contract.exchange.currency,
+      })
+      laterPremiumSum += contract.premium
+    }
+  }
+
+  rows.sort((left, right) =>
+    new Date(right.contract.createdAt).getTime() - new Date(left.contract.createdAt).getTime() ||
+    right.contract.id - left.contract.id
+  )
+  return rows
+})
 
 function fmtMoney(value: number) {
   return moneyFormatter.format(value)
@@ -158,8 +214,34 @@ function sagaOverallLabel(status: string) {
   }
 }
 
+async function loadClientAccounts() {
+  const clientId = authStore.client?.id
+  if (!clientId) return
+  accountsLoading.value = true
+  accountsError.value = ''
+  try {
+    const res = await clientAccountApi.listByClient(String(clientId))
+    const items: any[] = res.data?.accounts ?? res.data ?? []
+    const balances = new Map<number, number>()
+    const currencies = new Map<number, string>()
+    for (const item of items) {
+      const id = Number(item.id)
+      if (!Number.isFinite(id) || id === 0) continue
+      balances.set(id, Number(item.stanje))
+      currencies.set(id, String(item.currencyKod ?? ''))
+    }
+    accountBalances.value = balances
+    accountCurrencies.value = currencies
+  } catch (e: any) {
+    accountsError.value = e?.response?.data?.message ?? 'Greska prilikom ucitavanja racuna.'
+  } finally {
+    accountsLoading.value = false
+  }
+}
+
 onMounted(() => {
   otcStore.fetchContracts()
+  loadClientAccounts()
 })
 </script>
 
@@ -273,6 +355,56 @@ onMounted(() => {
                 >
                   Iskoristi
                 </button>
+                <span v-else class="asset-meta">-</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Premija i stanje kupceve racuna</h2>
+          <span class="panel-meta">Prikazuje stanje racuna kojim je kupac platio premium - pre i posle sklapanja ugovora. Vrednost "posle" se rekonstruise iz trenutnog stanja racuna (najnoviji ugovor) unazad. Aktivnosti van OTC izmedju ugovora mogu uticati na starije redove.</span>
+        </div>
+      </div>
+
+      <div v-if="otcStore.loadingContracts || accountsLoading" class="empty-state">Ucitavam podatke...</div>
+      <div v-else-if="accountsError" class="error-box">{{ accountsError }}</div>
+      <div v-else-if="buyerContractsWithBalances.length === 0" class="empty-state">
+        Nemate ugovora u kojima ste kupac.
+      </div>
+      <div v-else class="table-wrap">
+        <table class="otc-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Ticker</th>
+              <th>Premija</th>
+              <th>Stanje pre ugovora</th>
+              <th>Stanje posle ugovora</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in buyerContractsWithBalances" :key="row.contract.id">
+              <td class="contract-id">#{{ row.contract.id }}</td>
+              <td>
+                <div class="ticker">{{ row.contract.ticker }}</div>
+                <div class="asset-meta">{{ row.contract.name }}</div>
+              </td>
+              <td>{{ fmtMoney(row.contract.premium) }} {{ row.contract.exchange.currency }}</td>
+              <td>
+                <template v-if="row.balanceBefore != null">
+                  {{ fmtMoney(row.balanceBefore) }} {{ row.currency }}
+                </template>
+                <span v-else class="asset-meta">-</span>
+              </td>
+              <td>
+                <template v-if="row.balanceAfter != null">
+                  {{ fmtMoney(row.balanceAfter) }} {{ row.currency }}
+                </template>
                 <span v-else class="asset-meta">-</span>
               </td>
             </tr>
@@ -449,6 +581,10 @@ onMounted(() => {
 
 .panel {
   padding: 24px;
+}
+
+.panel + .panel {
+  margin-top: 20px;
 }
 
 .panel-head {
