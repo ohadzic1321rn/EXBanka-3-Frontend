@@ -6,6 +6,7 @@ import { clientAuthApi } from '../../api/clientAuth'
 vi.mock('../../api/clientAuth', () => ({
   clientAuthApi: {
     login: vi.fn(),
+    logout: vi.fn(),
   },
 }))
 
@@ -50,11 +51,14 @@ describe('clientAuth store', () => {
 
     const store = useClientAuthStore()
     await store.login('ana@gmail.com', 'password123')
+    vi.mocked(clientAuthApi.logout).mockResolvedValueOnce({ data: { message: 'logged out' } })
+
     store.logout()
 
     expect(store.accessToken).toBeNull()
     expect(store.refreshToken).toBeNull()
     expect(store.client).toBeNull()
+    expect(clientAuthApi.logout).toHaveBeenCalledWith('test-access', 'test-refresh')
   })
 
   it('isLoggedIn is false initially and true after login, false after logout', async () => {
@@ -72,8 +76,30 @@ describe('clientAuth store', () => {
     await store.login('ana@gmail.com', 'password123')
     expect(store.isLoggedIn).toBe(true)
 
+    vi.mocked(clientAuthApi.logout).mockResolvedValueOnce({ data: { message: 'logged out' } })
+
     store.logout()
     expect(store.isLoggedIn).toBe(false)
+  })
+
+  it('logout clears local state even if backend logout fails', async () => {
+    vi.mocked(clientAuthApi.login).mockResolvedValueOnce({
+      data: {
+        accessToken: 'test-access',
+        refreshToken: 'test-refresh',
+        client: { id: '1', ime: 'Ana', prezime: 'Jovic', email: 'ana@gmail.com', permissions: [] },
+      },
+    })
+    vi.mocked(clientAuthApi.logout).mockRejectedValueOnce(new Error('redis unavailable'))
+
+    const store = useClientAuthStore()
+    await store.login('ana@gmail.com', 'password123')
+    store.logout()
+
+    expect(store.accessToken).toBeNull()
+    expect(store.refreshToken).toBeNull()
+    expect(store.client).toBeNull()
+    expect(sessionStorage.getItem('client_access_token')).toBeNull()
   })
 
   it('exposes permissions and checks client trading access', async () => {

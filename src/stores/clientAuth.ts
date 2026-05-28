@@ -31,13 +31,26 @@ export const useClientAuthStore = defineStore('clientAuth', () => {
     sessionStorage.setItem('client', JSON.stringify(data.client))
   }
 
-  function logout() {
+  function clearSession() {
     accessToken.value = null
     refreshToken.value = null
     client.value = null
     sessionStorage.removeItem('client_access_token')
     sessionStorage.removeItem('client_refresh_token')
     sessionStorage.removeItem('client')
+  }
+
+  function logout() {
+    const tokenToRevoke = accessToken.value
+    const refreshToRevoke = refreshToken.value
+
+    clearSession()
+
+    if (tokenToRevoke) {
+      void clientAuthApi.logout(tokenToRevoke, refreshToRevoke).catch(() => {
+        // Local logout must not be blocked by temporary backend/Redis issues.
+      })
+    }
   }
 
   function hasPermission(permission: string) {

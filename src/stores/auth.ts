@@ -52,11 +52,24 @@ export const useAuthStore = defineStore('auth', () => {
     sessionStorage.setItem('employee', JSON.stringify(data.employee))
   }
 
-  function logout() {
+  function clearSession() {
     accessToken.value = null
     refreshToken.value = null
     employee.value = null
     sessionStorage.clear()
+  }
+
+  function logout() {
+    const tokenToRevoke = accessToken.value
+    const refreshToRevoke = refreshToken.value
+
+    clearSession()
+
+    if (tokenToRevoke) {
+      void authApi.logout(tokenToRevoke, refreshToRevoke).catch(() => {
+        // Local logout must not be blocked by temporary backend/Redis issues.
+      })
+    }
   }
 
   return { employee, isLoggedIn, permissions, hasPermission, isAdmin, login, logout }
