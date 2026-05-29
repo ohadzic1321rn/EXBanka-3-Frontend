@@ -1,7 +1,6 @@
 import api from './client'
 import axios from 'axios'
-
-const BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+import { resolveApiUrl } from '../runtimeConfig'
 
 export const authApi = {
   login: (email: string, password: string) =>
@@ -9,7 +8,7 @@ export const authApi = {
 
   logout: (accessToken: string, refreshToken?: string | null) =>
     axios.post(
-      `${BASE}/auth/logout`,
+      resolveApiUrl('/api/v1/auth/logout'),
       refreshToken ? { refreshToken } : {},
       {
         headers: {

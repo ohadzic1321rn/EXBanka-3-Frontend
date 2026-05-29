@@ -1,0 +1,33 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-push:
+    name: Build & Push (frontend)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        run: |
+          # Publish under the org/owner the workflow runs in (raf-si-2025 on the
+          # shared upstream repo). GHCR namespaces must be lowercase.
+          OWNER="${{ github.repository_owner }}"
+          OWNER="${OWNER,,}"
+          TAG="ghcr.io/${OWNER}/exbanka-3-frontend:latest"
+          docker build -t "$TAG" .
+          docker push "$TAG"
