@@ -55,6 +55,10 @@ function isPaymentSection() {
           <span class="sidebar-icon">★</span><span>Watchlists</span>
         </RouterLink>
 
+        <RouterLink v-if="canAccessMarket" to="/client/price-alerts" class="sidebar-link" :class="{ active: isActive('/client/price-alerts') }">
+          <span class="sidebar-icon">!</span><span>Alarmi</span>
+        </RouterLink>
+
         <RouterLink v-if="canAccessMarket" to="/client/otc" class="sidebar-link" :class="{ active: isActive('/client/otc') }">
           <span class="sidebar-icon">OT</span><span>OTC portal</span>
         </RouterLink>

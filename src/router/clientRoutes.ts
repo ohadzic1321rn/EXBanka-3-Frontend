@@ -41,6 +41,11 @@ export const clientRoutes: RouteRecordRaw[] = [
         meta: { clientTradingOnly: true },
       },
       {
+        path: 'price-alerts',
+        component: () => import('../views/client/ClientPriceAlertsView.vue'),
+        meta: { clientTradingOnly: true },
+      },
+      {
         path: 'otc',
         component: () => import('../views/client/ClientOtcPublicStocksView.vue'),
         meta: { clientTradingOnly: true },
