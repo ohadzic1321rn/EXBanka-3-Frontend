@@ -9,6 +9,7 @@ import BuyOrderModal from '../../components/BuyOrderModal.vue'
 import { useWatchlistStore } from '../../stores/watchlist'
 import { watchlistApi } from '../../api/watchlist'
 import type { Watchlist } from '../../api/watchlist'
+import { priceAlertApi } from '../../api/priceAlert'
 
 type Period = '1D' | '1W' | '1M' | '3M' | '1Y' | 'Max'
 const PERIODS: Period[] = ['1D', '1W', '1M', '3M', '1Y', 'Max']
@@ -154,6 +155,36 @@ const showWatchlistMenu = ref(false)
 const addingToWatchlist = ref(false)
 const watchlistAddMsg = ref('')
 
+// --- Price Alert ---
+const alertThreshold = ref<number | null>(null)
+const alertCondition = ref<'ABOVE' | 'BELOW'>('ABOVE')
+const alertSubmitting = ref(false)
+const alertMsg = ref('')
+const alertMsgType = ref<'success' | 'error'>('success')
+
+async function createAlert() {
+  if (!alertThreshold.value || alertThreshold.value <= 0) {
+    alertMsg.value = 'Unesi pozitivan prag cene.'
+    alertMsgType.value = 'error'
+    setTimeout(() => { alertMsg.value = '' }, 2500)
+    return
+  }
+  alertSubmitting.value = true
+  alertMsg.value = ''
+  try {
+    await priceAlertApi.create(ticker.value, alertCondition.value, alertThreshold.value)
+    alertMsg.value = 'Alarm uspešno postavljen!'
+    alertMsgType.value = 'success'
+    alertThreshold.value = null
+  } catch (e: any) {
+    alertMsg.value = e?.response?.data?.message ?? 'Greška pri postavljanju alarma.'
+    alertMsgType.value = 'error'
+  } finally {
+    alertSubmitting.value = false
+    setTimeout(() => { alertMsg.value = '' }, 2500)
+  }
+}
+
 async function addToWatchlist(wl: Watchlist) {
   addingToWatchlist.value = true
   watchlistAddMsg.value = ''
@@ -224,6 +255,28 @@ async function addToWatchlist(wl: Watchlist) {
               >{{ wl.name }}</button>
             </div>
             <span v-if="watchlistAddMsg" class="wl-add-msg">{{ watchlistAddMsg }}</span>
+          </div>
+          <div class="alert-form">
+            <div class="alert-form-row">
+              <select v-model="alertCondition" class="alert-select">
+                <option value="ABOVE">↑ Iznad</option>
+                <option value="BELOW">↓ Ispod</option>
+              </select>
+              <input
+                v-model.number="alertThreshold"
+                type="number"
+                min="0.01"
+                step="0.01"
+                placeholder="Prag cene"
+                class="alert-input"
+              />
+              <button class="alert-btn" :disabled="alertSubmitting" @click="createAlert">
+                {{ alertSubmitting ? '...' : 'Postavi alarm' }}
+              </button>
+            </div>
+            <span v-if="alertMsg" :class="['alert-msg', alertMsgType === 'success' ? 'alert-msg-ok' : 'alert-msg-err']">
+              {{ alertMsg }}
+            </span>
           </div>
         </div>
       </div>
@@ -896,6 +949,64 @@ async function addToWatchlist(wl: Watchlist) {
   color: #16a34a;
   text-align: right;
 }
+
+.alert-form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.alert-form-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.alert-select {
+  padding: 7px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.alert-input {
+  width: 110px;
+  padding: 7px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.alert-input:focus {
+  outline: none;
+  border-color: #f59e0b;
+}
+
+.alert-btn {
+  padding: 8px 14px;
+  background: #f59e0b;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.alert-btn:hover:not(:disabled) { background: #d97706; }
+.alert-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.alert-msg {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+}
+.alert-msg-ok  { color: #16a34a; }
+.alert-msg-err { color: #dc2626; }
 
 @media (max-width: 900px) {
   .hero {
