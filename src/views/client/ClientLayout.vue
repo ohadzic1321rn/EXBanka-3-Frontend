@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { useRouter, RouterLink, useRoute } from 'vue-router'
 import { useClientAuthStore } from '../../stores/clientAuth'
+import WatchlistTickerStrip from '../../components/WatchlistTickerStrip.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -48,6 +49,14 @@ function isPaymentSection() {
 
         <RouterLink v-if="canAccessMarket" to="/client/portfolio" class="sidebar-link" :class="{ active: isActive('/client/portfolio') }">
           <span class="sidebar-icon">$</span><span>Portfolio</span>
+        </RouterLink>
+
+        <RouterLink v-if="canAccessMarket" to="/client/watchlist" class="sidebar-link" :class="{ active: isActive('/client/watchlist') }">
+          <span class="sidebar-icon">★</span><span>Watchlists</span>
+        </RouterLink>
+
+        <RouterLink v-if="canAccessMarket" to="/client/price-alerts" class="sidebar-link" :class="{ active: isActive('/client/price-alerts') }">
+          <span class="sidebar-icon">!</span><span>Alarmi</span>
         </RouterLink>
 
         <RouterLink v-if="canAccessMarket" to="/client/otc" class="sidebar-link" :class="{ active: isActive('/client/otc') }">
@@ -119,6 +128,7 @@ function isPaymentSection() {
     </aside>
 
     <main class="client-main">
+      <WatchlistTickerStrip v-if="canAccessMarket" />
       <RouterView />
     </main>
   </div>

@@ -6,6 +6,10 @@ import { marketApi } from '../../api/market'
 import type { OptionItem } from '../../api/market'
 import PriceChart from '../../components/PriceChart.vue'
 import BuyOrderModal from '../../components/BuyOrderModal.vue'
+import { useWatchlistStore } from '../../stores/watchlist'
+import { watchlistApi } from '../../api/watchlist'
+import type { Watchlist } from '../../api/watchlist'
+import { priceAlertApi } from '../../api/priceAlert'
 
 type Period = '1D' | '1W' | '1M' | '3M' | '1Y' | 'Max'
 const PERIODS: Period[] = ['1D', '1W', '1M', '3M', '1Y', 'Max']
@@ -130,6 +134,7 @@ function isItm(type: 'CALL' | 'PUT', strike: number): boolean {
 onMounted(async () => {
   await loadDetails()
   await loadOptions()
+  watchlistStore.fetchWatchlists()
 })
 watch(ticker, async () => {
   await loadDetails()
@@ -142,6 +147,58 @@ const showBuyModal = ref(false)
 
 function onOrderSubmitted() {
   showBuyModal.value = false
+}
+
+// --- Watchlist ---
+const watchlistStore = useWatchlistStore()
+const showWatchlistMenu = ref(false)
+const addingToWatchlist = ref(false)
+const watchlistAddMsg = ref('')
+
+// --- Price Alert ---
+const alertThreshold = ref<number | null>(null)
+const alertCondition = ref<'ABOVE' | 'BELOW'>('ABOVE')
+const alertSubmitting = ref(false)
+const alertMsg = ref('')
+const alertMsgType = ref<'success' | 'error'>('success')
+
+async function createAlert() {
+  if (!alertThreshold.value || alertThreshold.value <= 0) {
+    alertMsg.value = 'Unesi pozitivan prag cene.'
+    alertMsgType.value = 'error'
+    setTimeout(() => { alertMsg.value = '' }, 2500)
+    return
+  }
+  alertSubmitting.value = true
+  alertMsg.value = ''
+  try {
+    await priceAlertApi.create(ticker.value, alertCondition.value, alertThreshold.value)
+    alertMsg.value = 'Alarm uspešno postavljen!'
+    alertMsgType.value = 'success'
+    alertThreshold.value = null
+  } catch (e: any) {
+    alertMsg.value = e?.response?.data?.message ?? 'Greška pri postavljanju alarma.'
+    alertMsgType.value = 'error'
+  } finally {
+    alertSubmitting.value = false
+    setTimeout(() => { alertMsg.value = '' }, 2500)
+  }
+}
+
+async function addToWatchlist(wl: Watchlist) {
+  addingToWatchlist.value = true
+  watchlistAddMsg.value = ''
+  try {
+    await watchlistApi.addItem(wl.id, ticker.value)
+    watchlistAddMsg.value = `Dodato na "${wl.name}"`
+  } catch (e: any) {
+    const status = e?.response?.status
+    watchlistAddMsg.value = status === 409 ? 'Već na listi' : 'Greška pri dodavanju'
+  } finally {
+    addingToWatchlist.value = false
+    showWatchlistMenu.value = false
+    setTimeout(() => { watchlistAddMsg.value = '' }, 2500)
+  }
 }
 </script>
 
@@ -178,6 +235,49 @@ function onOrderSubmitted() {
             <span>{{ marketStore.currentListing.exchange.currency }}</span>
           </div>
           <button class="buy-btn" @click="showBuyModal = true">Kupi</button>
+          <div class="watchlist-wrap">
+            <button class="watchlist-btn" @click="showWatchlistMenu = !showWatchlistMenu">
+              ★ Na watchlist
+            </button>
+            <div v-if="showWatchlistMenu" class="watchlist-menu">
+              <div v-if="watchlistStore.loading" class="wl-menu-hint">Učitavam...</div>
+              <div v-else-if="watchlistStore.watchlists.length === 0" class="wl-menu-hint">
+                <RouterLink to="/client/watchlist" @click="showWatchlistMenu = false">
+                  Kreiraj listu →
+                </RouterLink>
+              </div>
+              <button
+                v-for="wl in watchlistStore.watchlists"
+                :key="wl.id"
+                class="wl-menu-item"
+                :disabled="addingToWatchlist"
+                @click="addToWatchlist(wl)"
+              >{{ wl.name }}</button>
+            </div>
+            <span v-if="watchlistAddMsg" class="wl-add-msg">{{ watchlistAddMsg }}</span>
+          </div>
+          <div class="alert-form">
+            <div class="alert-form-row">
+              <select v-model="alertCondition" class="alert-select">
+                <option value="ABOVE">↑ Iznad</option>
+                <option value="BELOW">↓ Ispod</option>
+              </select>
+              <input
+                v-model.number="alertThreshold"
+                type="number"
+                min="0.01"
+                step="0.01"
+                placeholder="Prag cene"
+                class="alert-input"
+              />
+              <button class="alert-btn" :disabled="alertSubmitting" @click="createAlert">
+                {{ alertSubmitting ? '...' : 'Postavi alarm' }}
+              </button>
+            </div>
+            <span v-if="alertMsg" :class="['alert-msg', alertMsgType === 'success' ? 'alert-msg-ok' : 'alert-msg-err']">
+              {{ alertMsg }}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -779,6 +879,134 @@ function onOrderSubmitted() {
 .no-data-cell {
   color: #cbd5e1;
 }
+
+.watchlist-wrap {
+  position: relative;
+}
+
+.watchlist-btn {
+  padding: 10px 20px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.watchlist-btn:hover { background: #dbeafe; border-color: #93c5fd; }
+
+.watchlist-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  min-width: 180px;
+  z-index: 100;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wl-menu-hint {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.wl-menu-hint a {
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.wl-menu-item {
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  border: none;
+  background: none;
+  border-radius: 7px;
+  font-size: 14px;
+  color: #1e293b;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.wl-menu-item:hover:not(:disabled) { background: #f1f5f9; }
+.wl-menu-item:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.wl-add-msg {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #16a34a;
+  text-align: right;
+}
+
+.alert-form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.alert-form-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.alert-select {
+  padding: 7px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.alert-input {
+  width: 110px;
+  padding: 7px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.alert-input:focus {
+  outline: none;
+  border-color: #f59e0b;
+}
+
+.alert-btn {
+  padding: 8px 14px;
+  background: #f59e0b;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.alert-btn:hover:not(:disabled) { background: #d97706; }
+.alert-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.alert-msg {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+}
+.alert-msg-ok  { color: #16a34a; }
+.alert-msg-err { color: #dc2626; }
 
 @media (max-width: 900px) {
   .hero {
