@@ -84,6 +84,11 @@ const router = createRouter({
           meta: { employeeSupervisorOnly: true },
         },
         {
+          path: 'audit-logs',
+          component: () => import('../views/AuditLogView.vue'),
+          meta: { employeeSupervisorOnly: true },
+        },
+        {
           path: 'funds',
           component: () => import('../views/EmployeeFundsView.vue'),
         },
