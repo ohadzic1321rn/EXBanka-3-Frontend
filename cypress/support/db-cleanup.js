@@ -14,6 +14,9 @@ DELETE FROM otc_contracts WHERE buyer_type = 'client' AND buyer_id IN (SELECT id
 DELETE FROM otc_offers WHERE seller_type = 'client' AND seller_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com');
 DELETE FROM otc_offers WHERE buyer_type = 'client' AND buyer_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com');
 DELETE FROM portfolio_holdings WHERE user_type = 'client' AND user_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com');
+DELETE FROM watchlist_items WHERE watchlist_id IN (SELECT id FROM watchlists WHERE user_type = 'client' AND user_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com'));
+DELETE FROM watchlists WHERE user_type = 'client' AND user_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com');
+DELETE FROM price_alerts WHERE user_type = 'client' AND user_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com');
 DELETE FROM loan_installments WHERE loan_id IN (SELECT id FROM loans WHERE client_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com'));
 DELETE FROM transfers WHERE racun_posiljaoca_id IN (SELECT id FROM accounts WHERE client_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com')) OR racun_primaoca_id IN (SELECT id FROM accounts WHERE client_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com'));
 DELETE FROM payments WHERE racun_posiljaoca_id IN (SELECT id FROM accounts WHERE client_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com'));
@@ -25,6 +28,11 @@ DELETE FROM accounts WHERE client_id IN (SELECT id FROM clients WHERE email LIKE
 DELETE FROM client_permissions WHERE client_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com');
 DELETE FROM firmas WHERE vlasnik_id IN (SELECT id FROM clients WHERE email LIKE 'cypress.%@example.com');
 DELETE FROM clients WHERE email LIKE 'cypress.%@example.com';
+DELETE FROM watchlist_items WHERE watchlist_id IN (SELECT id FROM watchlists WHERE user_type = 'employee' AND user_id IN (SELECT id FROM employees WHERE email LIKE 'cypress.employee.%@bank.com'));
+DELETE FROM watchlists WHERE user_type = 'employee' AND user_id IN (SELECT id FROM employees WHERE email LIKE 'cypress.employee.%@bank.com');
+DELETE FROM price_alerts WHERE user_type = 'employee' AND user_id IN (SELECT id FROM employees WHERE email LIKE 'cypress.employee.%@bank.com');
+DELETE FROM audit_logs WHERE resource_type = 'employee' AND resource_id IN (SELECT id FROM employees WHERE email LIKE 'cypress.employee.%@bank.com');
+DELETE FROM audit_logs WHERE actor_id IN (SELECT id FROM employees WHERE email LIKE 'cypress.employee.%@bank.com');
 DELETE FROM actuary_profiles WHERE employee_id IN (SELECT id FROM employees WHERE email LIKE 'cypress.employee.%@bank.com');
 DELETE FROM employee_permissions WHERE employee_id IN (SELECT id FROM employees WHERE email LIKE 'cypress.employee.%@bank.com');
 DELETE FROM tokens WHERE employee_id IN (SELECT id FROM employees WHERE email LIKE 'cypress.employee.%@bank.com');
