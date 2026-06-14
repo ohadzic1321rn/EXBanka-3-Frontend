@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRouter, RouterLink, useRoute } from 'vue-router'
 import { useClientAuthStore } from '../../stores/clientAuth'
 import WatchlistTickerStrip from '../../components/WatchlistTickerStrip.vue'
+import NotificationBell from '../../components/NotificationBell.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -128,6 +129,9 @@ function isPaymentSection() {
     </aside>
 
     <main class="client-main">
+      <div class="client-topbar">
+        <NotificationBell />
+      </div>
       <WatchlistTickerStrip v-if="canAccessMarket" />
       <RouterView />
     </main>
@@ -200,4 +204,8 @@ function isPaymentSection() {
 }
 .sidebar-logout:hover { background: rgba(239,68,68,0.15); color: #fca5a5; border-color: rgba(239,68,68,0.2); }
 .client-main { flex: 1; margin-left: 260px; background: #f8fafc; min-height: 100vh; }
+.client-topbar {
+  display: flex; align-items: center; justify-content: flex-end;
+  padding: 12px 24px; background: #fff; border-bottom: 1px solid #e2e8f0;
+}
 </style>

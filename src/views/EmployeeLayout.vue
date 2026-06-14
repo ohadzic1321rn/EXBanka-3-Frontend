@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useRouter, RouterLink, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { usePermissions } from '../composables/usePermissions'
+import NotificationBell from '../components/NotificationBell.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -84,6 +85,9 @@ function isActive(to: string) {
     </aside>
 
     <main class="emp-main">
+      <div class="emp-topbar">
+        <NotificationBell base-path="" />
+      </div>
       <RouterView />
     </main>
   </div>
@@ -256,5 +260,14 @@ function isActive(to: string) {
   margin-left: 260px;
   background: #f8fafc;
   min-height: 100vh;
+}
+
+.emp-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 12px 24px;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
 }
 </style>

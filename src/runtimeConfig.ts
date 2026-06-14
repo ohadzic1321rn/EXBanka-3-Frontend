@@ -54,6 +54,7 @@ const SLUG_MAP: Array<[RegExp, string]> = [
   [/^\/api\/v1\/watchlists(\/|$)/, 'exchange'],
   [/^\/api\/v1\/price-alerts(\/|$)/, 'exchange'],
   [/^\/api\/v1\/loans(\/|$)/, 'loan'],
+  [/^\/api\/v1\/notifications(\/|$)/, 'notification'],
 ]
 
 const FALLBACK_SLUG = 'core'
