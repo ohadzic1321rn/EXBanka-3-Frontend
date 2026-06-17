@@ -49,6 +49,18 @@ export interface FundDividend {
   paidAt: string
 }
 
+export interface FundDividendPayout {
+  id: number
+  assetId: number
+  ticker: string
+  period: string
+  clientId: number
+  clientType: string
+  accountId: number
+  amountRSD: number
+  paidAt: string
+}
+
 export interface BenchmarkPoint {
   date: string
   indexValue: number
@@ -130,7 +142,9 @@ function fundApiFor(axiosInstance: typeof employeeApi) {
     statistics: (id: number) =>
       axiosInstance.get<{ statistics: FundStatistics }>(`/funds/${id}/statistics`),
     dividends: (id: number) =>
-      axiosInstance.get<{ dividends: FundDividend[]; count: number }>(`/funds/${id}/dividends`),
+      axiosInstance.get<{ dividends: FundDividend[]; count: number; payouts: FundDividendPayout[] }>(
+        `/funds/${id}/dividends`,
+      ),
     benchmark: () =>
       axiosInstance.get<{ benchmark: BenchmarkPoint[]; count: number }>('/funds/benchmark'),
     setDividendPolicy: (id: number, policy: FundDividendPolicy) =>

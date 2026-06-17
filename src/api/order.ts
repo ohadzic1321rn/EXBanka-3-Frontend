@@ -48,6 +48,8 @@ export interface Order {
   status: OrderStatus
   isDone: boolean
   remainingPortions: number
+  /** Commission charged for the order, in the asset's trading currency. */
+  commission: number
   /** Amount actually debited from the user's account at order creation, in the account's currency. Zero on sell orders. */
   totalPaid: number
   /** Account balance immediately before the buy debit. Zero on sell orders. */

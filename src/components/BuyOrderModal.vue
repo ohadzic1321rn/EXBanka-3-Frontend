@@ -160,11 +160,15 @@ async function loadAccounts() {
           balance: Number(a.raspolozivoStanje),
         }))
     } else {
-      // Employee: only bank (firma) accounts — exclude client accounts
+      // Employee: only bank (firma) accounts — exclude client accounts and
+      // investment-fund cash accounts (podvrsta='fondacija'). A fund account
+      // must only be traded through the "for fund" path, which swaps in the
+      // fund's account explicitly; the backend also rejects bank orders that
+      // target a fund account.
       const res = await accountApi.listAll({ status: 'aktivan', pageSize: 200 })
       const items: any[] = res.data?.accounts ?? res.data?.content ?? res.data ?? []
       accounts.value = items
-        .filter((a: any) => (!a.clientId || a.clientId === '0' || a.clientId === 0) && !a.naziv?.toLowerCase().includes('republika'))
+        .filter((a: any) => (!a.clientId || a.clientId === '0' || a.clientId === 0) && !a.naziv?.toLowerCase().includes('republika') && a.podvrsta !== 'fondacija')
         .map((a: any) => ({
           id: Number(a.id),
           label: `${a.naziv || a.brojRacuna} (${a.currencyKod} ${Number(a.raspolozivoStanje).toFixed(2)})`,

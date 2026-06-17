@@ -21,6 +21,7 @@ import {
   type FundPerformancePoint,
   type FundStatistics,
   type FundDividend,
+  type FundDividendPayout,
   type FundDividendPolicy,
 } from '../api/fund'
 import { accountApi } from '../api/account'
@@ -39,12 +40,16 @@ const performance = ref<FundPerformancePoint[]>([])
 const granularity = ref<'monthly' | 'quarterly' | 'yearly'>('monthly')
 const statistics = ref<FundStatistics | null>(null)
 const dividends = ref<FundDividend[]>([])
+const dividendPayouts = ref<FundDividendPayout[]>([])
 const policyBusy = ref(false)
 const loading = ref(false)
 const errorMsg = ref('')
 
 const isSupervisor = computed(() => auth.hasPermission('employeeSupervisor'))
 const isManager = computed(() => isSupervisor.value && fund.value?.managerId === auth.employee?.id)
+// The dividend policy is normally the managing supervisor's to set, but an admin
+// may override it on any fund (matches the backend admin override).
+const canManagePolicy = computed(() => isManager.value || auth.isAdmin())
 
 // Bank-invest dialog (supervisor on bank's behalf)
 const investOpen = ref(false)
@@ -70,6 +75,7 @@ async function load() {
     performance.value = perfRes.data?.performance ?? []
     statistics.value = statsRes.data?.statistics ?? null
     dividends.value = divRes.data?.dividends ?? []
+    dividendPayouts.value = divRes.data?.payouts ?? []
   } catch (err: any) {
     errorMsg.value = err?.response?.data?.message ?? 'Greska pri ucitavanju fonda.'
   } finally {
@@ -143,6 +149,26 @@ async function changeDividendPolicy(policy: FundDividendPolicy) {
   }
 }
 
+// Manual dividend run (manager only). The distribution is idempotent per
+// (fund, asset, quarter), so re-running in the same quarter reports the
+// already-paid holdings as "skipped" rather than paying twice.
+const dividendBusy = ref(false)
+const dividendMsg = ref('')
+async function runDividends() {
+  dividendBusy.value = true
+  dividendMsg.value = ''
+  try {
+    const res = await fundApi.runDividends()
+    const r = res.data
+    dividendMsg.value = `Period ${r.period}: ${r.processed} isplaćeno, ${r.skipped} preskočeno, ${r.failed} neuspešno (od ${r.eligible} podobnih).`
+    await load()
+  } catch (err: any) {
+    dividendMsg.value = err?.response?.data?.message ?? 'Greška pri pokretanju dividendi.'
+  } finally {
+    dividendBusy.value = false
+  }
+}
+
 function fmtPct(v: number) {
   return `${(v * 100).toFixed(2)} %`
 }
@@ -198,11 +224,11 @@ onMounted(async () => {
         </div>
         <div v-if="isSupervisor" class="actions">
           <button class="btn-primary" @click="investOpen = true">Uplati za banku</button>
-          <button v-if="isManager" class="btn-secondary" @click="router.push('/securities')">Kupi hartiju za fond</button>
+          <button v-if="canManagePolicy" class="btn-secondary" @click="router.push('/securities')">Kupi hartiju za fond</button>
         </div>
         <div class="policy-row">
           <span class="policy-label">Politika dividendi:</span>
-          <template v-if="isManager">
+          <template v-if="canManagePolicy">
             <button
               class="policy-btn"
               :class="{ active: fund.dividendPolicy === 'reinvest' }"
@@ -274,7 +300,13 @@ onMounted(async () => {
       </section>
 
       <section class="card">
-        <h2>Dividende fonda</h2>
+        <div class="card-head">
+          <h2>Dividende fonda</h2>
+          <button v-if="isSupervisor" class="btn-secondary" :disabled="dividendBusy" @click="runDividends">
+            {{ dividendBusy ? 'Pokrećem…' : 'Pokreni dividende' }}
+          </button>
+        </div>
+        <p v-if="dividendMsg" class="hint">{{ dividendMsg }}</p>
         <table v-if="dividends.length > 0" class="data-table">
           <thead>
             <tr>
@@ -296,6 +328,30 @@ onMounted(async () => {
           </tbody>
         </table>
         <p v-else class="hint">Fond još uvek nije primio dividende.</p>
+      </section>
+
+      <section class="card">
+        <h2>Isplate dividendi po učesniku</h2>
+        <p class="hint">Detaljan prikaz kome je i koliko isplaćeno (politika „Isplata“).</p>
+        <table v-if="dividendPayouts.length > 0" class="data-table">
+          <thead>
+            <tr>
+              <th>Datum</th><th>Period</th><th>Hartija</th>
+              <th>Učesnik</th><th>Račun</th><th class="num">Iznos (RSD)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="p in dividendPayouts" :key="p.id">
+              <td>{{ new Date(p.paidAt).toLocaleDateString('sr-RS') }}</td>
+              <td>{{ p.period }}</td>
+              <td><strong>{{ p.ticker }}</strong></td>
+              <td>{{ p.clientType === 'bank' ? 'Banka' : `Klijent #${p.clientId}` }}</td>
+              <td>#{{ p.accountId }}</td>
+              <td class="num">{{ p.amountRSD.toFixed(2) }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-else class="hint">Još uvek nema isplata po učesniku (reinvestiranje ne proizvodi isplate).</p>
       </section>
     </template>
 
@@ -351,6 +407,9 @@ onMounted(async () => {
 .negative { color: #dc2626; }
 .btn-primary { padding: 9px 18px; border: none; border-radius: 10px; background: #2563eb; color: #fff; font-weight: 600; cursor: pointer; }
 .btn-secondary { padding: 9px 18px; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; color: #374151; font-weight: 600; cursor: pointer; }
+.btn-secondary:disabled { opacity: 0.6; cursor: not-allowed; }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.card-head h2 { margin: 0; }
 .error-box { background: #fef2f2; border: 1px solid #fca5a5; border-radius: 10px; padding: 10px 14px; color: #b91c1c; margin-bottom: 14px; }
 .hint { color: #64748b; text-align: center; padding: 20px 0; }
 .modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.45); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }

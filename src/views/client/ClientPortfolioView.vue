@@ -5,7 +5,7 @@ import { useClientPortfolioStore } from '../../stores/portfolio'
 import { useClientAuthStore } from '../../stores/clientAuth'
 import { clientPortfolioApi, type Holding, type DividendPayout } from '../../api/portfolio'
 import { clientTaxApi, type TaxSummary } from '../../api/tax'
-import { clientOrderApi, type Order } from '../../api/order'
+import { clientOrderApi, type Order, type OrderType, type OrderStatus } from '../../api/order'
 import { clientAccountApi, type ClientAccountItem } from '../../api/clientAccount'
 import BuyOrderModal from '../../components/BuyOrderModal.vue'
 import type { ListingItem } from '../../api/market'
@@ -72,6 +72,53 @@ const sortedBuyOrders = computed(() =>
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   ),
 )
+
+// Buy-history filters: by status, order type, and creation-date range.
+const buyFilterStatus = ref<'' | OrderStatus>('')
+const buyFilterType = ref<'' | OrderType>('')
+const buyFilterFrom = ref('')
+const buyFilterTo = ref('')
+
+const filteredBuyOrders = computed(() => {
+  const from = buyFilterFrom.value ? new Date(buyFilterFrom.value) : null
+  const to = buyFilterTo.value ? new Date(`${buyFilterTo.value}T23:59:59`) : null
+  return sortedBuyOrders.value.filter((o) => {
+    if (buyFilterStatus.value && o.status !== buyFilterStatus.value) return false
+    if (buyFilterType.value && o.orderType !== buyFilterType.value) return false
+    const created = new Date(o.createdAt)
+    if (from && created < from) return false
+    if (to && created > to) return false
+    return true
+  })
+})
+
+function resetBuyFilters() {
+  buyFilterStatus.value = ''
+  buyFilterType.value = ''
+  buyFilterFrom.value = ''
+  buyFilterTo.value = ''
+}
+
+function orderStatusLabel(s: string) {
+  const map: Record<string, string> = {
+    pending: 'Pending',
+    approved: 'Approved',
+    declined: 'Declined',
+    done: 'Done',
+    cancelled: 'Cancelled',
+  }
+  return map[s] || s
+}
+
+// The order record has no dedicated execution timestamp; lastModification is the
+// time it reached its terminal state, so we surface it as the execution date for
+// done/declined orders and dash otherwise.
+function executionDate(o: Order) {
+  if (o.status === 'done' || o.status === 'declined') {
+    return formatOrderDate(o.lastModification)
+  }
+  return '-'
+}
 
 const marginOrders = computed(() =>
   sortedBuyOrders.value.filter((o) => o.isMargin),
@@ -410,42 +457,74 @@ onMounted(() => {
             <h2>Istorija kupovina akcija</h2>
             <span class="panel-meta">Svi nalozi kupovine, najnoviji prvo.</span>
           </div>
-          <span class="panel-meta">{{ buyOrders.length }} naloga</span>
+          <span class="panel-meta">{{ filteredBuyOrders.length }} / {{ buyOrders.length }} naloga</span>
         </div>
+
+        <div class="buy-filters">
+          <label>
+            Status
+            <select v-model="buyFilterStatus">
+              <option value="">Svi</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="declined">Declined</option>
+              <option value="done">Done</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </label>
+          <label>
+            Tip ordera
+            <select v-model="buyFilterType">
+              <option value="">Svi</option>
+              <option value="market">Market</option>
+              <option value="limit">Limit</option>
+              <option value="stop">Stop</option>
+              <option value="stop_limit">Stop-Limit</option>
+            </select>
+          </label>
+          <label>
+            Od
+            <input v-model="buyFilterFrom" type="date" />
+          </label>
+          <label>
+            Do
+            <input v-model="buyFilterTo" type="date" />
+          </label>
+          <button class="reset-filters-btn" @click="resetBuyFilters">Poništi</button>
+        </div>
+
         <div v-if="buyOrdersError" class="error-box" style="margin:0">{{ buyOrdersError }}</div>
         <div v-else-if="!buyOrders.length" class="empty-inline">Nema istorije kupovina.</div>
+        <div v-else-if="!filteredBuyOrders.length" class="empty-inline">Nema naloga za izabrane filtere.</div>
         <div v-else class="buy-history-wrap">
           <table class="portfolio-table buy-history-table">
             <thead>
               <tr>
-                <th>Datum</th>
-                <th>Akcija</th>
-                <th>Tip naloga</th>
-                <th>Količina</th>
-                <th>Stop</th>
-                <th>Limit</th>
-                <th>Margin</th>
-                <th>AON</th>
-                <th>After hours</th>
-                <th>Ukupno plaćeno</th>
-                <th>Stanje pre uplate</th>
-                <th>Stanje posle uplate</th>
+                <th>Tip ordera</th>
+                <th>Hartija</th>
+                <th>Količina i cena izvršenja</th>
+                <th>Status</th>
+                <th>Datum kreiranja i izvršenja</th>
+                <th>Plaćena provizija</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="o in sortedBuyOrders" :key="o.id">
-                <td>{{ formatOrderDate(o.createdAt) }}</td>
-                <td class="ticker">{{ o.assetTicker }}</td>
+              <tr v-for="o in filteredBuyOrders" :key="o.id">
                 <td>{{ orderTypeLabel(o.orderType) }}</td>
-                <td>{{ formatQuantity(o.quantity) }}</td>
-                <td>{{ o.stopValue != null ? formatAmount(o.stopValue) : '-' }}</td>
-                <td>{{ o.limitValue != null ? formatAmount(o.limitValue) : '-' }}</td>
-                <td><span :class="['flag-badge', o.isMargin ? 'flag-on' : 'flag-off']">{{ o.isMargin ? 'Da' : 'Ne' }}</span></td>
-                <td><span :class="['flag-badge', o.isAON ? 'flag-on' : 'flag-off']">{{ o.isAON ? 'Da' : 'Ne' }}</span></td>
-                <td><span :class="['flag-badge', o.afterHours ? 'flag-on' : 'flag-off']">{{ o.afterHours ? 'Da' : 'Ne' }}</span></td>
-                <td>{{ o.totalPaid > 0 ? formatAmount(o.totalPaid) : '-' }}</td>
-                <td>{{ o.balanceBefore > 0 || o.balanceAfter > 0 ? formatAmount(o.balanceBefore) : '-' }}</td>
-                <td>{{ o.balanceBefore > 0 || o.balanceAfter > 0 ? formatAmount(o.balanceAfter) : '-' }}</td>
+                <td>
+                  <div class="ticker">{{ o.assetTicker }}</div>
+                  <div class="asset-meta">{{ o.assetName }}</div>
+                </td>
+                <td>
+                  <div>{{ formatQuantity(o.quantity) }} kom</div>
+                  <div class="asset-meta">@ {{ formatAmount(o.pricePerUnit) }}</div>
+                </td>
+                <td><span :class="['status-badge', `status-${o.status}`]">{{ orderStatusLabel(o.status) }}</span></td>
+                <td>
+                  <div>{{ formatOrderDate(o.createdAt) }}</div>
+                  <div class="asset-meta">Izvršeno: {{ executionDate(o) }}</div>
+                </td>
+                <td>{{ o.commission > 0 ? formatAmount(o.commission) : '-' }}</td>
               </tr>
             </tbody>
           </table>
@@ -844,6 +923,58 @@ onMounted(() => {
   background: #f8fafc;
   z-index: 1;
 }
+
+.buy-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.buy-filters label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.buy-filters select,
+.buy-filters input {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #0f172a;
+  font: inherit;
+  min-width: 140px;
+}
+
+.reset-filters-btn {
+  padding: 9px 14px;
+  border: none;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #475569;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.status-pending { background: #fef3c7; color: #92400e; }
+.status-approved { background: #dbeafe; color: #1d4ed8; }
+.status-done { background: #dcfce7; color: #166534; }
+.status-declined,
+.status-cancelled { background: #fee2e2; color: #991b1b; }
 
 .flag-badge {
   display: inline-block;
